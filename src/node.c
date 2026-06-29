@@ -155,6 +155,16 @@ SON_Node *SON_AllocDiv(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs)
   return node;
 }
 
+/* other nodes */
+
+SON_Node *SON_AllocScope(CompilerContext *ctx)
+{
+  SON_Node *node = SON_AllocNext_Impl(ctx, SON_Node_Scope, 0, 0);
+  node->value.kind = SON_Value_Bottom;
+  SON_GraphStep(ctx);
+  return node;
+}
+
 /* control nodes */
 
 SON_Node *SON_FunctionReturnCtrl(SON_Node *node)
@@ -187,6 +197,104 @@ SON_Node *SON_BinaryRhs(SON_Node *node)
   return node->inputs.items[1];
 }
 
+/* other nodes */
+
+SON_Node *SON_ScopeCtrl(SON_Node *node)
+{
+  Assert(node->kind == SON_Node_Scope);
+  return node->inputs.items[0];
+}
+SON_Node *SON_ScopeSetCtrl(CompilerContext *ctx, SON_Node *node, SON_Node *n)
+{
+  Assert(node->kind == SON_Node_Scope);
+  SON_Node *newNode = SON_SetDef(ctx, node, 0, n);
+  SON_GraphStep(ctx);
+  return newNode;
+}
+
+/* Get a list of symbol names from all of the scopes in this scopenode
+ * the list returned is aligned with the inputs to the node
+ */
+StringViewList Scope_ReverseNames(SON_Node *scope)
+{
+  Assert(scope->kind == SON_Node_Scope);
+
+  StringViewList list;
+  list.count = scope->inputs.count;
+  list.items = malloc(sizeof(view)*list.count);
+  list.capacity = list.count;
+
+  for(size_t hmIdx = 0; hmIdx < scope->as.scope.scopes.count; hmIdx++) {
+    SymbolHashmap *hm = &scope->as.scope.scopes.items[hmIdx];
+    for(size_t keyIdx = 0; keyIdx < stbds_hmlenu(*hm); keyIdx++) {
+      SymbolEntry sym = (*hm)[keyIdx];
+      list.items[sym.value] = sym.key;
+    }
+  }
+
+  return list;
+}
+
+void Scope_Push(CompilerContext *ctx, SON_Node *scope)
+{
+  (void)ctx;
+  Assert(scope->kind == SON_Node_Scope);
+  DaAppend(&scope->as.scope.scopes, (SymbolHashmap)0);
+}
+
+void Scope_Pop(CompilerContext *ctx, SON_Node *scope)
+{
+  Assert(scope->kind == SON_Node_Scope);
+
+  SymbolHashmap *hm = &scope->as.scope.scopes.items[scope->as.scope.scopes.count - 1];
+  SON_PopNodes(ctx, scope, stbds_hmlenu(*hm));
+  stbds_hmfree(*hm);
+}
+
+SON_Node *Scope_Define(CompilerContext *ctx, SON_Node *scope, view name, SON_Node *n)
+{
+  Assert(scope->kind == SON_Node_Scope);
+
+  SymbolHashmap *hm = &scope->as.scope.scopes.items[scope->as.scope.scopes.count - 1];
+  if(stbds_hmgetp_null(*hm, name)) {
+    // double define
+    return 0;
+  }
+  stbds_hmput(*hm, name, scope->inputs.count);
+
+  SON_Node *node = SON_AddDef(ctx, scope, n);
+  SON_GraphStep(ctx);
+  return node;
+}
+
+SON_Node *Scope_Lookup(SON_Node *scope, view name)
+{
+  for(int i = (int)scope->as.scope.scopes.count - 1; i >= 0; i--) {
+    SymbolHashmap *hm = &scope->as.scope.scopes.items[i];
+
+    SymbolEntry *entry = stbds_hmgetp_null(*hm, name);
+    if(entry) {
+      return scope->inputs.items[entry->value];
+    }
+  }
+  return 0;
+}
+
+SON_Node *Scope_Update(CompilerContext *ctx, SON_Node *scope, view name, SON_Node *node)
+{
+  for(int i = (int)scope->as.scope.scopes.count - 1; i >= 0; i--) {
+    SymbolHashmap *hm = &scope->as.scope.scopes.items[i];
+
+    SymbolEntry *entry = stbds_hmgetp_null(*hm, name);
+    if(entry) {
+      SON_Node *newNode = SON_SetDef(ctx, scope, entry->value, node);
+      SON_GraphStep(ctx);
+      return newNode;
+    }
+  }
+  return 0;
+}
+
 const char *OperationKindToString(OperationKind op)
 {
   switch(op) {
@@ -207,7 +315,7 @@ const char *OperationKindToString(OperationKind op)
 
 bool SON_ValueIsConstant(SON_Value val)
 {
-  return ((val.kind > SON_Value_StartCanBeConstant) && val.isConstant) || 
+  return ((val.kind > SON_Value_StartCanBeConstant) && (val.kind < SON_Value_EndCanBeConstant) && val.isConstant) || 
     (val.kind == SON_Value_Top);
 }
 
@@ -320,6 +428,7 @@ const char *SON_NodeKindToString(SON_Node *node)
     case SON_Node_UnaryOperation: return "UnaryOperation";
     case SON_Node_BinaryOperation: return "BinaryOperation";
     case SON_Node_DataEnd: return "DataEnd";
+    case SON_Node_Scope: return "Scope";
   }
   return "";
 }
@@ -367,6 +476,10 @@ const char *SON_NodeLabel(SON_Node *node)
         case Operation_Mul: return "Mul";
         case Operation_Div: return "Div";
       }
+    } break;
+
+    case SON_Node_Scope: {
+      return "Scope";
     } break;
   }
   return "Unassigned";
@@ -421,6 +534,10 @@ const char *SON_NodeUniqueName(SON_Node *node)
         case Operation_Mul: return temp_sprintf("Mul"U64_Fmt, node->nodeID);
         case Operation_Div: return temp_sprintf("Div"U64_Fmt, node->nodeID);
       }
+    } break;
+
+    case SON_Node_Scope: {
+      return temp_sprintf("Scope"U64_Fmt, node->nodeID);
     } break;
   }
   return temp_sprintf("Unassigned"U64_Fmt, node->nodeID);
@@ -478,6 +595,27 @@ void SON_PrintToBuilder(string_builder *sb, SON_Node *node)
       SbAppendf(sb, " %s ", OperationKindToString(node->as.unary.op));
       SON_PrintToBuilder(sb, SON_BinaryRhs(node));
       SbAppendCstr(sb, ")");
+    } break;
+
+    case SON_Node_Scope: {
+      SbAppendCstr(sb, SON_NodeLabel(node));
+      for(size_t hmIdx = 0; hmIdx < node->as.scope.scopes.count; hmIdx++) {
+        SymbolHashmap *hm = &node->as.scope.scopes.items[hmIdx];
+        SbAppendCstr(sb, "[");
+        for(size_t keyIdx = 0; keyIdx < stbds_hmlenu(hm); keyIdx++) {
+          view name = (*hm)[keyIdx].key;
+          if(keyIdx != 0) { SbAppendCstr(sb, ", "); }
+          SbAppendBuf(sb, name.items, name.count);
+          SbAppendCstr(sb, ":");
+          if(keyIdx < node->inputs.count) {
+            SON_Node *n = node->inputs.items[(*hm)[keyIdx].value];
+            SON_PrintToBuilder(sb, n);
+          } else {
+            SbAppendCstr(sb, "null");
+          }
+        }
+        SbAppendCstr(sb, "]");
+      }
     } break;
   }
 }
@@ -583,6 +721,12 @@ SON_Value SON_Compute(SON_Node *node)
         .kind = SON_Value_Bottom,
       };
     }
+
+    case SON_Node_Scope: {
+      return (SON_Value){
+        .kind = SON_Value_Bottom,
+      };
+    }
   }
   return (SON_Value){0};
 }
@@ -597,11 +741,11 @@ SON_Node *SON_Idealize(SON_Node *node)
     case SON_Node_DataStart:
     case SON_Node_DataEnd: {
       return 0;
-    }
+    } break;
 
     case SON_Node_FunctionStart: {
       return 0;
-    }
+    } break;
 
     case SON_Node_FunctionReturn: {
       return 0;
@@ -616,6 +760,10 @@ SON_Node *SON_Idealize(SON_Node *node)
     } break;
 
     case SON_Node_BinaryOperation: {
+      return 0;
+    } break;
+
+    case SON_Node_Scope: {
       return 0;
     } break;
   }

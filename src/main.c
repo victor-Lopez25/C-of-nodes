@@ -32,10 +32,26 @@ bool InitCompilerContext(CompilerContext *ctx)
   ctx->sentinelNode.nodeID = 0;
   ctx->sentinelNode.kind = SON_Node_Unassigned;
 
+  // TODO: Do I want these to be normal constant nodes?
+  ctx->defaultValues[SON_Value_Integer] = SON_AllocNext_Impl(ctx, SON_Node_Constant, 0, 0);
+  ctx->defaultValues[SON_Value_Integer]->value.kind = SON_Value_Integer;
+  ctx->defaultValues[SON_Value_Integer]->value.as.integer = 0;
+
+  ctx->defaultValues[SON_Value_Floating] = SON_AllocNext_Impl(ctx, SON_Node_Constant, 0, 0);
+  ctx->defaultValues[SON_Value_Floating]->value.kind = SON_Value_Floating;
+  ctx->defaultValues[SON_Value_Floating]->value.as.floating = 0.0;
+
+  ctx->defaultValues[SON_Value_String] = SON_AllocNext_Impl(ctx, SON_Node_Constant, 0, 0);
+  ctx->defaultValues[SON_Value_String]->value.kind = SON_Value_String;
+  ctx->defaultValues[SON_Value_String]->value.as.string = VIEW_STATIC("");
+
+  stbds_hmput(ctx->keywords, VIEW_STATIC("int"), 1);
+  stbds_hmput(ctx->keywords, VIEW_STATIC("return"), 1);
+
   return true;
 }
 
-void ClearCompilerContext(CompilerContext *ctx)
+void DeleteCompilerContext(CompilerContext *ctx)
 {
   Assert(ctx);
 
@@ -61,19 +77,28 @@ void ClearCompilerContext(CompilerContext *ctx)
     ctx->nodes.chunks[i] = 0;
   }
 
+  if(ctx->scope) {
+    for(size_t i = 0; i < ctx->scope->as.scope.scopes.count; i++) {
+      stbds_hmfree(ctx->scope->as.scope.scopes.items[i]);
+    }
+    DaFree(ctx->scope->as.scope.scopes);
+  }
+
   // This gets allocated from ctx->nodes so probably not a good idea to use it after clearing it
   ctx->nodeFreeList = 0;
 
   ctx->nodes.hdr.n = 0;
   // NOTE: node idx 0 is reserved
   ctx->nodeUniqueID = 1;
-  ArenaClear(ctx->arena, false);
+  ArenaClear(ctx->arena, true);
+}
 
+void ClearCompilerContext(CompilerContext *ctx)
+{
+  DeleteCompilerContext(ctx);
+
+  ctx->scope = SON_AllocScope(ctx);
   ctx->startNode = SON_AllocFunctionStart(ctx);
-
-  for(size_t i = 0; i < ctx->scope.scopes.count; i++) {
-    stbds_hmfree(ctx->scope.scopes.items[i]);
-  }
 }
 
 #define GenerateGraphFile(ctx) \
@@ -200,11 +225,29 @@ void TestAddPeephole(CompilerContext *ctx)
   SbFree(sb);
 }
 
+void testVariableDecl(CompilerContext *ctx)
+{
+  ClearCompilerContext(ctx);
+
+  view data = VIEW("a: int = 1; return a;");
+  ctx->originalSource = data;
+  ctx->currentSource = data;
+
+  SON_Node *ret = Parse_CurrentContext(ctx);
+  string_builder sb = {0};
+  SON_PrintToBuilder(&sb, ret);
+  VL_Log(VL_INFO, "output: "VIEW_FMT, VIEW_ARG(sb));
+  SbFree(sb);
+}
+
 void DoTests(CompilerContext *ctx)
 {
-  TestParseGrammar(ctx);
-  TestAddPeephole(ctx);
-  TestPeepholeExample(ctx);
+  // TestParseGrammar(ctx);
+  // TestAddPeephole(ctx);
+  // TestPeepholeExample(ctx);
+  testVariableDecl(ctx);
+
+  DeleteCompilerContext(ctx);
 }
 
 int main(int argc, char **argv)

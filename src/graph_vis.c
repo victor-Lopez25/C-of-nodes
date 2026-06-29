@@ -43,6 +43,46 @@ static void Graph_Nodes(string_builder *sb, SON_NodeList list)
   SbAppendCstr(sb, "\t}\n");
 }
 
+static char *Graph_MakeScopeName(SON_Node *scope, uint64_t level)
+{
+  return temp_sprintf("%s_"U64_Fmt, SON_NodeUniqueName(scope), level);
+}
+
+static char *Graph_MakePortName(SON_Node *scope, view name)
+{
+  return temp_sprintf("%s_"VIEW_FMT, SON_NodeUniqueName(scope), VIEW_ARG(name));
+}
+
+static void Graph_Scopes(string_builder *sb, SON_Node *scope)
+{
+  SbAppendCstr(sb, "\tnode [shape=plaintext];\n");
+
+  size_t level = 0;
+  for(; level < scope->as.scope.scopes.count; level++) {
+    SymbolHashmap *hm = &scope->as.scope.scopes.items[level];
+    char *scopeName = Graph_MakeScopeName(scope, level);
+    // Magic "cluster_" in the subgraph name
+    SbAppendf(sb, "\tsubgraph cluster_%s {\n", scopeName);
+    SbAppendf(sb, "\t\t%s [label=<\n", scopeName);
+    SbAppendCstr(sb, "\t\t\t<TABLE BORDER=\"0\" CELLBORDER=\"1\" CELLSPACING=\"0\">\n");
+    // Add the scope level
+    SbAppendf(sb, "\t\t\t<TR><TD BGCOLOR=\"cyan\">"U64_Fmt"</TD>", level);
+    for(size_t i = 0; i < stbds_hmlenu(*hm); i++) {
+      SymbolEntry sym = (*hm)[i];
+      SbAppendf(sb, "<TD PORT=\"%s\">"VIEW_FMT"</TD>", Graph_MakePortName(scope, sym.key), VIEW_ARG(sym.key));
+    }
+    SbAppendCstr(sb, "</TR>\n");
+    SbAppendCstr(sb, "\t\t\t</TABLE>>];\n");
+  }
+
+  // Scope clusters nest, so the graphics shows the nested scopes, so
+  // they are not closed as they are printed; so they just keep nesting.
+  // We close them all at once here.
+  for(size_t i = 0; i < level; i++) {
+    SbAppendCstr(sb, "\t}\n");
+  }
+}
+
 static void Graph_NodeEdges(string_builder *sb, SON_NodeList list)
 {
   SbAppendCstr(sb, "\tedge [ fontname=Helvetica, fontsize=8 ];\n");
@@ -62,6 +102,23 @@ static void Graph_NodeEdges(string_builder *sb, SON_NodeList list)
         SbAppendCstr(sb, " color=red");
       }
       SbAppendCstr(sb, "];\n");
+    }
+  }
+}
+
+static void Graph_ScopeEdges(string_builder *sb, SON_Node *scope)
+{
+  SbAppendCstr(sb, "\tedge [style=dashed color=cornflowerblue];\n");
+  for(size_t level = 0; level < scope->as.scope.scopes.count; level++) {
+    SymbolHashmap *hm = &scope->as.scope.scopes.items[level];
+    char *scopeName = Graph_MakeScopeName(scope, level);
+    for(size_t i = 0; i < stbds_hmlenu(*hm); i++) {
+      SymbolEntry sym = (*hm)[i];
+      if((sym.value > scope->inputs.count) || (scope->inputs.items[sym.value] == 0)) {
+        continue;
+      }
+      SON_Node *def = scope->inputs.items[sym.value];
+      SbAppendf(sb, "\t%s:\"%s\" -> %s;\n", scopeName, Graph_MakePortName(scope, sym.key), SON_NodeUniqueName(def));
     }
   }
 }
@@ -92,7 +149,11 @@ string_builder Graph_GenerateDotOutput(CompilerContext *ctx, char *name)
 
   Graph_Nodes(&sb, all);
 
+  Graph_Scopes(&sb, ctx->scope);
+
   Graph_NodeEdges(&sb, all);
+
+  Graph_ScopeEdges(&sb, ctx->scope);
 
   SbAppendCstr(&sb, "}\n");
 

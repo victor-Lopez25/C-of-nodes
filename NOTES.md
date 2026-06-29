@@ -10,7 +10,6 @@ There are two categories of nodes in the ir:
  - Data nodes
  - Other (scopes)
 
-
 ## Language Design
 ### Macros/Metaprogramming
  - Janet (https://janet.guide/macros-and-metaprogramming/): allows upscoping defined variables in macros optionally (using `upscope`). This is very interesting, I think I should also have some kind of upscoping.

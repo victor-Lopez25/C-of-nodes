@@ -12,6 +12,12 @@
 #define SON_NODE_XAR_CHUNK_COUNT VICLIB_EXP_ARRAY_CHUNK_COUNT
 #define SON_NODE_XAR_CHUNK_SHIFT VICLIB_EXP_ARRAY_CHUNK_SHIFT
 
+typedef struct {
+  view *items;
+  size_t count;
+  size_t capacity;
+} StringViewList;
+
 typedef struct SON_Node SON_Node;
 typedef struct SON_NodeList SON_NodeList;
 
@@ -138,6 +144,17 @@ struct SON_NodeList {
   size_t count;
 };
 
+/* NOTE: This will probably have a different type later,
+ *  Also, this is not a type* array, it is a hashmap using stb_ds.h
+ */
+typedef struct {
+  view key;
+  /* index into node->inputs.items for the scopenode */
+  size_t value;
+} SymbolEntry;
+
+typedef SymbolEntry* SymbolHashmap;
+
 typedef enum {
   // unary
   /* unary plus '+' expr */
@@ -160,6 +177,15 @@ typedef struct {
   OperationKind op;
   bool orderMatters;
 } SON_BinaryOpNode;
+
+typedef struct {
+  /* stack of scopes */
+  struct {
+    SymbolHashmap *items;
+    size_t count;
+    size_t capacity;
+  } scopes;
+} SON_ScopeNode;
 
 struct SON_Node {
   // TODO: When the structure is more solid, it might be worth trying to remove some of the nodelists
@@ -203,28 +229,14 @@ struct SON_Node {
   union {
     SON_UnaryOpNode unary;
     SON_BinaryOpNode binary;
+    SON_ScopeNode scope;
   } as;
 };
 
-/* NOTE: This will probably have a different type later,
- *  Also, this is not a type* array, it is a hashmap using stb_ds.h
- */
-typedef struct {
-  char *key;
-  int64_t value;
-} SymbolEntry;
+/////////////////////////////////////////////
 
-typedef SymbolEntry* SymbolHashmap;
-
-typedef struct {
-  SON_Node *node;
-
-  struct {
-    SymbolHashmap *items;
-    size_t count;
-    size_t capacity;
-  } scopes;
-} SON_Scope;
+/* I might change the value to this hashtable, the key should stay as a 'view' */
+typedef SymbolEntry* KeywordHashmap;
 
 /////////////////////////////////////////////
 
@@ -235,7 +247,7 @@ typedef struct {
   uint64_t nodeUniqueID;
 
   SON_Node *startNode;
-  SON_Scope scope;
+  SON_Node *scope;
 
   // Should always be filled with 0s and not connected to any other nodes
   SON_Node sentinelNode;
@@ -243,8 +255,12 @@ typedef struct {
   exp_array(SON_Node, SON_NODE_XAR_CHUNK_COUNT) nodes;
   SON_Node *nodeFreeList;
 
+  SON_Node *defaultValues[SON_Value_EndCanBeConstant];
+
   view originalSource;
   view currentSource;
+
+  KeywordHashmap keywords;
 } CompilerContext;
 
 #if COMPILER_CL

@@ -286,38 +286,6 @@ VLIBPROC bool VL_GetLastWriteTime(const char *file, u64 *writeTime);
 #define VL_NeedsRebuild(out, in, ...) VL_NeedsRebuild_Impl(out, ((const char*[]){in, __VA_ARGS__}), sizeof((const char*[]){in, __VA_ARGS__})/sizeof(const char*))
 VLIBPROC int VL_NeedsRebuild_Impl(const char *output_path, const char **input_paths, size_t input_paths_count);
 
-typedef struct vl_filetime_node vl_filetime_node;
-struct vl_filetime_node {
-    view file;
-    u64 time;
-    //bool exploredAllDependencies;
-    vl_filetime_node *next;
-};
-
-#ifndef VL_BUILD_FILETIME_TABLE_SIZE
-#define VL_BUILD_FILETIME_TABLE_SIZE 1024
-#endif // VL_BUILD_FILETIME_TABLE_SIZE
-
-typedef struct {
-    vl_filetime_node *items;
-    size_t count;
-    size_t capacity;
-} vl_filetime_nodelist;
-
-typedef struct {
-    vl_filetime_nodelist nodes;
-    uint32_t countTimes;
-} vl_filetime_table;
-
-typedef struct {
-    vl_filetime_table table;
-    vl_filetime_node *freelist;
-    vl_file_paths *includePaths;
-    memory_arena *Arena;
-} vl_needrebuild_context;
-
-extern vl_needrebuild_context VL_needsRebuildContext;
-
 #ifndef VL_BUILD_FILENAME_HASH
 #define VL_BUILD_FILENAME_HASH(v, hash) do {\
     /* djb2 */ \

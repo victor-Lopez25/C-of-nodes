@@ -12,7 +12,8 @@ static inline bool LEX_IsEOF(CompilerContext *ctx)
 
 static inline char LEX_Peek(CompilerContext *ctx)
 {
-  return LEX_IsEOF(ctx) ? LEX_SENTINEL_CHAR : ctx->currentSource.items[0];
+  char result = LEX_IsEOF(ctx) ? LEX_SENTINEL_CHAR : ctx->currentSource.items[0];
+  return result;
 }
 
 static inline char LEX_NextChar(CompilerContext *ctx)
@@ -25,32 +26,49 @@ static inline char LEX_NextChar(CompilerContext *ctx)
 
 static inline bool LEX_IsWhiteSpace(CompilerContext *ctx)
 {
-  return is_space(LEX_Peek(ctx));
+  bool result = is_space(LEX_Peek(ctx));
+  return result;
 }
 
 static inline bool LEX_IsNumber(char ch)
 {
-  return isdigit(ch);
+  bool result = isdigit(ch);
+  return result;
 }
 
 static inline bool LEX_IsIdStart(char ch)
 {
-  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_';
+  bool result = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_';
+  return result;
 }
 
 static inline bool LEX_IsIdLetter(char ch)
 {
-  return LEX_IsNumber(ch) || LEX_IsIdStart(ch);
+  bool result = LEX_IsNumber(ch) || LEX_IsIdStart(ch);
+  return result;
 }
 
 static inline bool LEX_IsOperator(char ch)
 {
-  return ViewFindCharacter(VIEW("=;[]<>(){}+-/*!"), ch, 0);
+  bool result = ViewFindCharacter(VIEW("=;[]<>(){}+-/*!"), ch, 0);
+  return result;
 }
 
 static inline void LEX_SkipWhiteSpace(CompilerContext *ctx)
 {
   ctx->currentSource = ViewTrimLeft(ctx->currentSource);
+}
+
+// NOTE: Does not check if the start of the id is correct (not a number)
+static inline view LEX_ParseId(CompilerContext *ctx)
+{
+  size_t i = 0;
+  view start = ctx->currentSource;
+  for(;i < ctx->currentSource.count && LEX_IsIdLetter(LEX_NextChar(ctx));) i += 1;
+
+  ctx->currentSource.items = start.items + i;
+  ctx->currentSource.count = start.count - i;
+  return ViewFromParts(start.items, i);
 }
 
 static inline bool LEX_Match(CompilerContext *ctx, view word)
@@ -69,6 +87,12 @@ static inline bool LEX_MatchEx(CompilerContext *ctx, view word)
   return false;
 }
 
+static inline view LEX_MatchId(CompilerContext *ctx)
+{
+  LEX_SkipWhiteSpace(ctx);
+  return LEX_IsIdStart(LEX_Peek(ctx)) ? LEX_ParseId(ctx) : VIEW_STATIC("");
+}
+
 static inline view LEX_ParseNumberString(CompilerContext *ctx)
 {
   view before = ctx->currentSource;
@@ -83,15 +107,6 @@ static inline view LEX_ParseNumberString(CompilerContext *ctx)
 static inline bool LEX_ParseNumber(CompilerContext *ctx, int64_t *val)
 {
   return ViewParseS64(ctx->currentSource, val, &ctx->currentSource);
-}
-
-// NOTE: Does not check if the start of the id is correct (not a number)
-static inline view LEX_ParseId(CompilerContext *ctx)
-{
-  size_t i = 0;
-  for(;i < ctx->currentSource.count && LEX_IsIdLetter(LEX_NextChar(ctx));) i += 1;
-
-  return ViewFromParts((const char*)(ctx->currentSource.items + i), ctx->currentSource.count - i);
 }
 
 static inline view LEX_ParseOperator(CompilerContext *ctx)

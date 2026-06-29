@@ -34,6 +34,8 @@ SON_Node *SON_AllocMul(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs);
 SON_Node *SON_AllocSub(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs);
 SON_Node *SON_AllocDiv(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs);
 
+SON_Node *SON_AllocScope(CompilerContext *ctx);
+
 /* getters */
 
 SON_Node *SON_FunctionReturnCtrl(SON_Node *node);
@@ -43,10 +45,20 @@ SON_Node *SON_UnaryExpr(SON_Node *node);
 SON_Node *SON_BinaryLhs(SON_Node *node);
 SON_Node *SON_BinaryRhs(SON_Node *node);
 
+SON_Node *SON_ScopeCtrl(SON_Node *node);
+SON_Node *SON_ScopeSetCtrl(CompilerContext *ctx, SON_Node *node, SON_Node *n);
+
 bool SON_ValueIsConstant(SON_Value val);
 bool SON_IsControl(SON_Node *node);
 bool SON_IsUnused(SON_Node *node);
 bool SON_IsDead(SON_Node *node);
+
+StringViewList Scope_ReverseNames(SON_Node *scope);
+void Scope_Push(CompilerContext *ctx, SON_Node *scope);
+void Scope_Pop(CompilerContext *ctx, SON_Node *scope);
+SON_Node *Scope_Define(CompilerContext *ctx, SON_Node *scope, view name, SON_Node *n);
+SON_Node *Scope_Lookup(SON_Node *scope, view name);
+SON_Node *Scope_Update(CompilerContext *ctx, SON_Node *scope, view name, SON_Node *node);
 
 /* modifications */
 
