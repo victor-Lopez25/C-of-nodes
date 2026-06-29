@@ -41,7 +41,7 @@ gcc build.c -o build
 ## Current language
 
 ```
-<statment>
+<statement>
 ```
 where:
 ```
