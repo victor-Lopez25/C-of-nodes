@@ -183,10 +183,10 @@ VLIBPROC bool SbPadAlign(string_builder *sb, size_t size);
 #define SbAppendBuf(sb, buf, size) DaAppendMany(sb, buf, size)
 // does not include null character
 #define SbAppendCstr(sb, cstr)  \
-    do {                         \
-        const char *s = (cstr);  \
-        size_t n = strlen(s);    \
-        DaAppendMany(sb, s, n); \
+    do {                        \
+        const char *s = (cstr); \
+        size_t n##_##__LINE__ = strlen(s);   \
+        DaAppendMany(sb, s, n##_##__LINE__); \
     } while (0)
 
 #define SbAppendNull(sb) DaAppend(sb, 0)

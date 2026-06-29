@@ -59,14 +59,14 @@ static inline bool LEX_Match(CompilerContext *ctx, view word)
   return ViewChopStartsWith(&ctx->currentSource, word);
 }
 
-// Not sure what this is used for yet
+/* Match exclusive, if there a match and the word doesn't go on, returns true */
 static inline bool LEX_MatchEx(CompilerContext *ctx, view word)
 {
   if(!LEX_Match(ctx, word)) return false;
   if(!LEX_IsIdLetter(LEX_Peek(ctx))) return true;
   ctx->currentSource.count += word.count;
   ctx->currentSource.items -= word.count;
-  return true;
+  return false;
 }
 
 static inline view LEX_ParseNumberString(CompilerContext *ctx)
@@ -102,7 +102,7 @@ static inline view LEX_ParseOperator(CompilerContext *ctx)
   return result;
 }
 
-static inline view LEX_GetAnyNextToken(CompilerContext *ctx)
+view LEX_GetAnyNextToken(CompilerContext *ctx)
 {
   if(LEX_IsEOF(ctx)) return VIEW("");
 
