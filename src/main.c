@@ -1,6 +1,8 @@
 #define VL_BUILD_IMPLEMENTATION
+#define STB_DS_IMPLEMENTATION
 //#include "vl_build.h" (included in common.h)
 #include "common.h"
+#include "time.h" /* time() */
 
 #include "node.c"
 #include "parser.c"
@@ -13,12 +15,13 @@ bool ENABLE_GRAPH_STEPS = false;
 char *GRAPH_STEP_FILE_FMT = U64_Fmt;
 uint64_t GRAPH_STEP_IDX = 0;
 
-// https://github.com/SeaOfNodes/Simple/blob/main/chapter01/README.md
 // NOTE: Types prefixed with SON_ mean SeaOfNodes_
 
 bool InitCompilerContext(CompilerContext *ctx)
 {
   Assert(ctx);
+
+  stbds_rand_seed(time(0));
 
   ArenaInit(ctx->arena, GLOBAL_ARENA_SIZE, malloc(GLOBAL_ARENA_SIZE));
   ExpArrayInit(ctx->nodes, SON_NODE_XAR_CHUNK_SHIFT);
@@ -67,6 +70,10 @@ void ClearCompilerContext(CompilerContext *ctx)
   ArenaClear(ctx->arena, false);
 
   ctx->startNode = SON_AllocFunctionStart(ctx);
+
+  for(size_t i = 0; i < ctx->scope.scopes.count; i++) {
+    stbds_hmfree(ctx->scope.scopes.items[i]);
+  }
 }
 
 #define GenerateGraphFile(ctx) \
@@ -130,7 +137,7 @@ void TestParseGrammar(CompilerContext *ctx)
 {
   ClearCompilerContext(ctx);
   DISABLE_PEEPHOLE_OPTIMIZATIONS = true;
-  EnableGraphStepsForTest();
+  // EnableGraphStepsForTest();
 
   view data = VIEW("return 1+2*3+-5;");
   ctx->originalSource = data;
@@ -155,7 +162,7 @@ void TestParseGrammar(CompilerContext *ctx)
 void TestPeepholeExample(CompilerContext *ctx)
 {
   ClearCompilerContext(ctx);
-  EnableGraphStepsForTest();
+  // EnableGraphStepsForTest();
 
   // view data = VIEW("return 1+2*3;");
   view data = VIEW("return 1+2*3+-5;");

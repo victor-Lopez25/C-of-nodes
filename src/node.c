@@ -14,7 +14,7 @@ SON_Node *SON_InitNode_Impl(CompilerContext *ctx, SON_Node *node, SON_NodeKind k
   // Add this node as an output of its input nodes
   for(size_t i = 0; i < inputNodeCount; i++) {
     SON_Node *n = inputs[i];
-    DaAppend(&n->outputs, node);
+    SON_AddUse(ctx, n, node);
   }
 
   return node;
@@ -227,51 +227,83 @@ bool SON_IsDead(SON_Node *node)
   return SON_IsUnused(node) && node->inputs.count == 0 && node->value.kind == SON_Value_Unassigned;
 }
 
-SON_Node *SON_SetDef(CompilerContext *ctx, SON_Node *node, uint64_t idx, SON_Node *new_def)
+SON_Node *SON_AddUse(CompilerContext *ctx, SON_Node *node, SON_Node *use)
 {
-  SON_Node *old_def = node->inputs.items[idx];
-  if(old_def == new_def) return node;
+  (void)ctx;
+  DaAppend(&node->outputs, use);
+  return node;
+}
+
+SON_Node *SON_AddDef(CompilerContext *ctx, SON_Node *node, SON_Node *newDef)
+{
+  (void)ctx;
+  DaAppend(&node->inputs, newDef);
+  if(newDef != 0) {
+    SON_AddUse(ctx, newDef, node);
+  }
+  return newDef;
+}
+
+/* Removes use from outputs, returns if the list is empty after deletion */
+bool SON_DelUse(CompilerContext *ctx, SON_Node *node, SON_Node *use)
+{
+  (void)ctx;
+  // linear search
+  bool found = false;
+  size_t i = 0;
+  for(; i < node->outputs.count; i++) {
+    if(node->outputs.items[i] == use) {
+      found = true;
+      break;
+    }
+  }
+
+  if(found) {
+    node->outputs.items[i] = node->outputs.items[node->outputs.count - 1];
+    node->outputs.count--;
+  }
+
+  return node->outputs.count == 0;
+}
+
+/* Change a definition into a node, kills old definition if it has no outputs left */
+SON_Node *SON_SetDef(CompilerContext *ctx, SON_Node *node, uint64_t idx, SON_Node *newDef)
+{
+  SON_Node *oldDef = node->inputs.items[idx];
+  if(oldDef == newDef) return node;
   // If new def is not null, add the corresponding def->use edge
   // This needs to happen before removing the old node's def->use edge as
-  // the new_def might get killed if the old node kills it recursively.
-  if(new_def != 0) {
-    new_def->outputs.items[idx] = node;
+  // the newDef might get killed if the old node kills it recursively.
+  if(newDef != 0) {
+    SON_AddUse(ctx, newDef, node);
   }
-  if(old_def != 0) {
-    // linear search
-    bool found = false;
-    int i = 0;
-    for(; i < old_def->outputs.count; i++) {
-      if(old_def->outputs.items[i] == node) {
-        found = true;
-        break;
-      }
-    }
-
-    if(found) {
-      old_def->outputs.items[i] = old_def->outputs.items[old_def->outputs.count - 1];
-      old_def->outputs.count--;
-    }
-    if(old_def->outputs.count == 0) {
-      SON_KillNode(ctx, old_def);
-    }
+  if(oldDef != 0 && SON_DelUse(ctx, oldDef, node)) {
+    SON_KillNode(ctx, oldDef);
   }
 
-  node->inputs.items[idx] = new_def;
-  return new_def;
+  node->inputs.items[idx] = newDef;
+  return newDef;
 }
 
 void SON_KillNode(CompilerContext *ctx, SON_Node *node)
 {
   Assert(SON_IsUnused(node));
-  for(int i = 0; i < node->inputs.count; i++) {
-    // Set all inputs to null, recursively killing unused Nodes
-    SON_SetDef(ctx, node, i, 0);
-  }
-
-  node->inputs.count = 0;
+  // remove all inputs and kill unused nodes
+  SON_PopNodes(ctx, node, node->inputs.count);
   node->value.kind = SON_Value_Unassigned;
   SON_FreeNode(ctx, node);
+}
+
+/* Pops n nodes from inputs and kills them if they have no outputs left */
+void SON_PopNodes(CompilerContext *ctx, SON_Node *node, size_t n)
+{
+  Assert(node->inputs.count >= n);
+  for(size_t i = 0; i < n; i++) {
+    SON_Node *oldDef = node->inputs.items[node->inputs.count-- - 1];
+    if(oldDef && SON_DelUse(ctx, oldDef, node)) {
+      SON_KillNode(ctx, oldDef);
+    }
+  }
 }
 
 /* Get a string representation of the node kind */
@@ -602,9 +634,7 @@ SON_Node *SON_Peephole(CompilerContext *ctx, SON_Node *node)
   if(SON_ValueIsConstant(value) && node->kind != SON_Node_Constant) {
     // TODO: Keep this node just change it to be a new constant node
     SON_KillNode(ctx, node);
-    // SON_GraphStep(ctx);
     SON_Node *newNode = SON_Peephole(ctx, SON_AllocConstant(ctx, value));
-    // SON_GraphStep(ctx);
     return newNode;
   }
 

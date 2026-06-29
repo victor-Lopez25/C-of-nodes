@@ -8,8 +8,7 @@ flowchart BT
 There are two categories of nodes in the ir:
  - Control nodes
  - Data nodes
-
-
+ - Other (scopes)
 
 
 ## Language Design

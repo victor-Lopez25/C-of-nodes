@@ -50,8 +50,13 @@ bool SON_IsDead(SON_Node *node);
 
 /* modifications */
 
+SON_Node *SON_AddUse(CompilerContext *ctx, SON_Node *node, SON_Node *use);
+SON_Node *SON_AddDef(CompilerContext *ctx, SON_Node *node, SON_Node *newDef);
+
 SON_Node *SON_SetDef(CompilerContext *ctx, SON_Node *node, uint64_t idx, SON_Node *new_def);
 void SON_KillNode(CompilerContext *ctx, SON_Node *node);
+
+void SON_PopNodes(CompilerContext *ctx, SON_Node *node, size_t n);
 
 /* printing */
 

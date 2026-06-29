@@ -1,8 +1,13 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#ifndef STBDS_NO_SHORT_NAMES
+#define STBDS_NO_SHORT_NAMES
+#endif
+
 #include "raddbg_markup.h"
 #include "vl_build.h"
+#include "stb_ds.h"
 
 #define SON_NODE_XAR_CHUNK_COUNT VICLIB_EXP_ARRAY_CHUNK_COUNT
 #define SON_NODE_XAR_CHUNK_SHIFT VICLIB_EXP_ARRAY_CHUNK_SHIFT
@@ -201,6 +206,26 @@ struct SON_Node {
   } as;
 };
 
+/* NOTE: This will probably have a different type later,
+ *  Also, this is not a type* array, it is a hashmap using stb_ds.h
+ */
+typedef struct {
+  char *key;
+  int64_t value;
+} SymbolEntry;
+
+typedef SymbolEntry* SymbolHashmap;
+
+typedef struct {
+  SON_Node *node;
+
+  struct {
+    SymbolHashmap *items;
+    size_t count;
+    size_t capacity;
+  } scopes;
+} SON_Scope;
+
 /////////////////////////////////////////////
 
 typedef struct {
@@ -210,16 +235,12 @@ typedef struct {
   uint64_t nodeUniqueID;
 
   SON_Node *startNode;
+  SON_Scope scope;
+
   // Should always be filled with 0s and not connected to any other nodes
   SON_Node sentinelNode;
 
   exp_array(SON_Node, SON_NODE_XAR_CHUNK_COUNT) nodes;
-  // struct {
-  //  SON_Node *items;
-  //  size_t count;
-  //  size_t capacity;
-  //} nodes;
-
   SON_Node *nodeFreeList;
 
   view originalSource;
