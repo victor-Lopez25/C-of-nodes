@@ -79,6 +79,20 @@ typedef enum {
    * This is an invalid node kind (only used to identify a range)
    */
   SON_Node_DataEnd,
+
+  ///////////////////////////////
+  // Other nodes
+  ///////////////////////////////
+
+  /* Represents scopes in the graph
+   *
+   * Type: Symbol table
+   * 
+   * Inputs: All nodes that define variables
+   * 
+   * Value: None
+   */
+  SON_Node_Scope,
 } SON_NodeKind;
 
 // TODO: This enum can definitely be simplified
@@ -217,8 +231,13 @@ typedef struct {
 // NOTE: This one doesn't work well, I'll try to fix it at some point
 //raddbg_type_view(exp_array(SON_Node, SON_NODE_XAR_CHUNK_COUNT), array($.chunks, SON_NODE_XAR_CHUNK_COUNT));
 
-#endif
+#endif // COMPILER_CL
 
 extern bool DISABLE_PEEPHOLE_OPTIMIZATIONS;
+extern bool ENABLE_GRAPH_STEPS;
+extern char *GRAPH_STEP_FILE_FMT;
+extern uint64_t GRAPH_STEP_IDX;
+
+string_builder Graph_GenerateDotOutput(CompilerContext *ctx, char *name);
 
 #endif // COMMON_H

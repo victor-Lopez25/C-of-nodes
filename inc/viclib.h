@@ -1,6 +1,6 @@
 /* date = December 29th 2024 10:12 pm
 --Author: Víctor López Cortés
---version: 1.6.3
+--version: 1.7.0
 --Usage:
 Defines: To have any of these take effect, you must define them _before_ including this file
  - VICLIB_IMPLEMENTATION: If you want to have the implementation (only in one file)
@@ -650,6 +650,10 @@ struct ArenaSplit_opts {
     memory_arena *SplitArena;
     size_t SplitSize;
 };
+
+#if !defined(VICLIB_NO_TEMP_ARENA)
+extern memory_arena ArenaTemp;
+#endif
 
 // NOTE: Thanks Vjekoslav for the idea! (https://twitter.com/vkrajacic/status/1749816169736073295)
 

@@ -71,13 +71,16 @@ SON_Node *SON_AllocReturn(CompilerContext *ctx, SON_Node *ctrl, SON_Node *data)
     return 0;
   }
   SON_Node *node = SON_AllocNext(ctx, SON_Node_FunctionReturn, ctrl, data);
+  SON_GraphStep(ctx);
   return node;
 }
 
 // NOTE: This will have more args later...
 SON_Node *SON_AllocFunctionStart(CompilerContext *ctx)
 {
-  return SON_AllocNext_Impl(ctx, SON_Node_FunctionStart, 0, 0);
+  SON_Node *node = SON_AllocNext_Impl(ctx, SON_Node_FunctionStart, 0, 0);
+  SON_GraphStep(ctx);
+  return node;
 }
 
 /* data nodes */
@@ -87,6 +90,7 @@ SON_Node *SON_AllocConstant(CompilerContext *ctx, SON_Value value)
   Assert(SON_ValueIsConstant(value));
   SON_Node *node = SON_AllocNext(ctx, SON_Node_Constant, ctx->startNode);
   node->value = value;
+  SON_GraphStep(ctx);
   return node;
 }
 
@@ -98,6 +102,7 @@ SON_Node *SON_AllocPlus(CompilerContext *ctx, SON_Node *in)
   // return in;
   SON_Node *node = SON_AllocNext(ctx, SON_Node_UnaryOperation, in);
   node->as.unary.op = Operation_Plus;
+  SON_GraphStep(ctx);
   return node;
 }
 
@@ -108,6 +113,7 @@ SON_Node *SON_AllocMinus(CompilerContext *ctx, SON_Node *in)
 {
   SON_Node *node = SON_AllocNext(ctx, SON_Node_UnaryOperation, in);
   node->as.unary.op = Operation_Minus;
+  SON_GraphStep(ctx);
   return node;
 }
 
@@ -118,6 +124,7 @@ SON_Node *SON_AllocAdd(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs)
   SON_Node *node = SON_AllocNext(ctx, SON_Node_BinaryOperation, lhs, rhs);
   node->as.binary.op = Operation_Add;
   node->as.binary.orderMatters = false;
+  SON_GraphStep(ctx);
   return node;
 }
 
@@ -126,6 +133,7 @@ SON_Node *SON_AllocMul(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs)
   SON_Node *node = SON_AllocNext(ctx, SON_Node_BinaryOperation, lhs, rhs);
   node->as.binary.op = Operation_Mul;
   node->as.binary.orderMatters = false;
+  SON_GraphStep(ctx);
   return node;
 }
 
@@ -134,6 +142,7 @@ SON_Node *SON_AllocSub(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs)
   SON_Node *node = SON_AllocNext(ctx, SON_Node_BinaryOperation, lhs, rhs);
   node->as.binary.op = Operation_Sub;
   node->as.binary.orderMatters = true;
+  SON_GraphStep(ctx);
   return node;
 }
 
@@ -142,6 +151,7 @@ SON_Node *SON_AllocDiv(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs)
   SON_Node *node = SON_AllocNext(ctx, SON_Node_BinaryOperation, lhs, rhs);
   node->as.binary.op = Operation_Div;
   node->as.binary.orderMatters = true;
+  SON_GraphStep(ctx);
   return node;
 }
 
@@ -228,8 +238,20 @@ SON_Node *SON_SetDef(CompilerContext *ctx, SON_Node *node, uint64_t idx, SON_Nod
     new_def->outputs.items[idx] = node;
   }
   if(old_def != 0) {
-    old_def->outputs.items[old_def->outputs.count - 1] = old_def->outputs.items[idx];
-    old_def->outputs.count--;
+    // linear search
+    bool found = false;
+    int i = 0;
+    for(; i < old_def->outputs.count; i++) {
+      if(old_def->outputs.items[i] == node) {
+        found = true;
+        break;
+      }
+    }
+
+    if(found) {
+      old_def->outputs.items[i] = old_def->outputs.items[old_def->outputs.count - 1];
+      old_def->outputs.count--;
+    }
     if(old_def->outputs.count == 0) {
       SON_KillNode(ctx, old_def);
     }
@@ -330,19 +352,25 @@ const char *SON_NodeUniqueName(SON_Node *node)
     case SON_Node_FunctionStart: return temp_sprintf("FunctionStart"U64_Fmt, node->nodeID);
     case SON_Node_FunctionReturn: return temp_sprintf("Return"U64_Fmt, node->nodeID);
 
+    /* Constant unique names:
+     * integers: Const<id>_<val>i
+     * floating: Const<id>_<val>f
+     * string: Const<id>_<val>
+     * other: Const<id>_Unassigned
+     */
     case SON_Node_Constant: {
       switch(node->value.kind) {
         case SON_Value_Integer: {
-          return temp_sprintf(U64_Fmt"#"S64_Fmt, node->nodeID, node->value.as.integer);
+          return temp_sprintf("Const"U64_Fmt, node->nodeID);
         }
         case SON_Value_Floating: {
-          return temp_sprintf(U64_Fmt"#%lf", node->nodeID, node->value.as.floating);
+          return temp_sprintf("Const"U64_Fmt, node->nodeID);
         }
         case SON_Value_String: {
-          return temp_sprintf(U64_Fmt"#'"VIEW_FMT"'", node->nodeID, node->value.as.string);
+          return temp_sprintf("Const"U64_Fmt, node->nodeID);
         }
         default: {
-          return temp_sprintf(U64_Fmt"#Unassigned", node->nodeID);
+          return temp_sprintf("Const"U64_Fmt, node->nodeID);
         }
       }
     }
@@ -574,7 +602,10 @@ SON_Node *SON_Peephole(CompilerContext *ctx, SON_Node *node)
   if(SON_ValueIsConstant(value) && node->kind != SON_Node_Constant) {
     // TODO: Keep this node just change it to be a new constant node
     SON_KillNode(ctx, node);
-    return SON_Peephole(ctx, SON_AllocConstant(ctx, value));
+    // SON_GraphStep(ctx);
+    SON_Node *newNode = SON_Peephole(ctx, SON_AllocConstant(ctx, value));
+    // SON_GraphStep(ctx);
+    return newNode;
   }
 
   SON_Node *n = SON_Idealize(node);
@@ -583,4 +614,15 @@ SON_Node *SON_Peephole(CompilerContext *ctx, SON_Node *node)
   }
 
   return node;
+}
+
+void SON_GraphStep(CompilerContext *ctx)
+{
+  if(ENABLE_GRAPH_STEPS) {
+    size_t mark = temp_save();
+    string_builder sb = Graph_GenerateDotOutput(ctx, temp_sprintf("graph_"U64_Fmt, GRAPH_STEP_IDX));
+    WriteEntireFile(temp_sprintf(GRAPH_STEP_FILE_FMT, GRAPH_STEP_IDX++), sb.items, sb.count);
+    SbFree(sb);
+    temp_rewind(mark);
+  }
 }

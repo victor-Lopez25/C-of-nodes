@@ -67,4 +67,8 @@ SON_Value SON_Compute(SON_Node *node);
 SON_Node *SON_Idealize(SON_Node *node);
 SON_Node *SON_Peephole(CompilerContext *ctx, SON_Node *node);
 
+/* debugging */
+
+void SON_GraphStep(CompilerContext *ctx);
+
 #endif // NODE_H

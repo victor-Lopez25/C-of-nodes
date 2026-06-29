@@ -11,6 +11,33 @@
 
 #define EXECUTABLE OUTPUT_DIR "/" EXE_NAME
 
+#if OS_WINDOWS
+#define DOT_PROGRAM "D:\\Graphviz\\bin\\dot"
+#else
+#define DOT_PROGRAM "dot"
+#endif
+
+void GeneratePngFilesFromDot(vl_cmd *cmd, const char *directory)
+{
+  vl_file_paths files = {0};
+  if(!VL_ReadEntireDir(directory, &files)) {
+    VL_Log(VL_ERROR, "Could not read dot files directory %s", directory);
+  }
+
+  VL_Pushd(directory);
+
+  for(size_t i = 0; i < files.count; i++) {
+    if(!strcmp(files.items[i], ".") || !strcmp(files.items[i], "..")) continue;
+
+    CmdAppend(cmd, DOT_PROGRAM, "-Tpng", "-O", files.items[i]);
+    if(!CmdRun(cmd)) {
+      VL_Log(VL_WARNING, "Could not create png from dot file %s", files.items[i]);
+    }
+  }
+
+  VL_Popd();
+}
+
 int main(int argc, char **argv)
 {
   VL_GO_REBUILD_URSELF(argc, argv, "inc/vl_build.h");
@@ -49,6 +76,8 @@ int main(int argc, char **argv)
       return 1;
     }
   }
+
+  // GeneratePngFilesFromDot(&cmd, "bin/steps/TestPeepholeExample");
 
   return 0;
 }

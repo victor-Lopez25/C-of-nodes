@@ -2,7 +2,7 @@
 
 #define NodeEq(A, B) ((A)->nodeID == (B)->nodeID)
 
-void Graph_Walk(SON_NodeList *list, SON_Node *n)
+static void Graph_Walk(SON_NodeList *list, SON_Node *n)
 {
   // TODO: This could probably use a hashmap instead, will be quicker to search for a node by node id
   bool found = false;
@@ -17,7 +17,7 @@ void Graph_Walk(SON_NodeList *list, SON_Node *n)
   }
 }
 
-SON_NodeList Graph_FindAll(SON_Node *startNode)
+static SON_NodeList Graph_FindAll(SON_Node *startNode)
 {
   SON_NodeList list = {0};
   for(size_t i = 0; i < startNode->outputs.count; i++) {
@@ -26,7 +26,7 @@ SON_NodeList Graph_FindAll(SON_Node *startNode)
   return list;
 }
 
-void Graph_Nodes(string_builder *sb, SON_NodeList list)
+static void Graph_Nodes(string_builder *sb, SON_NodeList list)
 {
   SbAppendCstr(sb, "\tsubgraph cluster_Nodes {\n"); // Magic "cluster_" in the subgraph name
   for(size_t i = 0; i < list.count; i++) {
@@ -43,7 +43,7 @@ void Graph_Nodes(string_builder *sb, SON_NodeList list)
   SbAppendCstr(sb, "\t}\n");
 }
 
-void Graph_NodeEdges(string_builder *sb, SON_NodeList list)
+static void Graph_NodeEdges(string_builder *sb, SON_NodeList list)
 {
   SbAppendCstr(sb, "\tedge [ fontname=Helvetica, fontsize=8 ];\n");
   for(size_t nodeIdx = 0; nodeIdx < list.count; nodeIdx++) {
@@ -66,14 +66,15 @@ void Graph_NodeEdges(string_builder *sb, SON_NodeList list)
   }
 }
 
-string_builder Graph_GenerateDotOutput(CompilerContext *ctx)
+string_builder Graph_GenerateDotOutput(CompilerContext *ctx, char *name)
 {
   string_builder sb = {0};
   SON_NodeList all = Graph_FindAll(ctx->startNode);
-  SbAppendCstr(&sb, "digraph chapter 02 {\n"
-                    "/*\n");
-  SbAppendf(&sb, VIEW_FMT"\n"
-                 "*/\n", VIEW_ARG(ctx->originalSource));
+  SbAppendf(&sb, 
+    "digraph %s {\n"
+    "/*\n"
+    VIEW_FMT"\n"
+    "*/\n", name, VIEW_ARG(ctx->originalSource));
 
   // To keep the Scopes below the graph and pointing up into the graph we
   // need to group the Nodes in a subgraph cluster, and the scopes into a
