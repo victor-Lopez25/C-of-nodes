@@ -162,7 +162,7 @@ void TestParseGrammar(CompilerContext *ctx)
 {
   ClearCompilerContext(ctx);
   DISABLE_PEEPHOLE_OPTIMIZATIONS = true;
-  // EnableGraphStepsForTest();
+  EnableGraphStepsForTest();
 
   view data = VIEW("return 1+2*3+-5;");
   ctx->originalSource = data;
@@ -187,7 +187,7 @@ void TestParseGrammar(CompilerContext *ctx)
 void TestPeepholeExample(CompilerContext *ctx)
 {
   ClearCompilerContext(ctx);
-  // EnableGraphStepsForTest();
+  EnableGraphStepsForTest();
 
   // view data = VIEW("return 1+2*3;");
   view data = VIEW("return 1+2*3+-5;");
