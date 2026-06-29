@@ -1,0 +1,2405 @@
+// [vl_build.h](https://github.com/victor-Lopez25/viclib) © 2025 by [Víctor López Cortés](https://github.com/victor-Lopez25) is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+// version: 1.5.1
+#ifndef VL_BUILD_H
+#define VL_BUILD_H
+
+// Huge TODO: Try to do this without stdlib.h?
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <errno.h>
+
+#ifndef VICLIB_PATH
+# define VICLIB_PATH "viclib.h"
+#endif
+
+#if defined(VL_BUILD_IMPLEMENTATION) && !defined(VICLIB_IMPLEMENTATION)
+# define VICLIB_IMPLEMENTATION
+#endif
+
+#if defined(_WIN32)
+# if !defined(_CRT_SECURE_NO_WARNINGS)
+#  define _CRT_SECURE_NO_WARNINGS
+# endif
+#include <direct.h>
+#include <io.h>
+#else
+
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#endif
+
+#define VL_INC_STDIO_H
+#define VL_INC_STDLIB_H
+#define VL_INC_STRING_H
+#include VICLIB_PATH
+
+#define VL_REALLOC realloc
+#define VL_FREE free
+
+#if defined(__GNUC__) || defined(__clang__)
+//   https://gcc.gnu.org/onlinedocs/gcc-4.7.2/gcc/Function-Attributes.html
+#    ifdef __MINGW_PRINTF_FORMAT
+#        define VL_PRINTF_FORMAT(STRING_INDEX, FIRST_TO_CHECK) __attribute__ ((format (__MINGW_PRINTF_FORMAT, STRING_INDEX, FIRST_TO_CHECK)))
+#    else
+#        define VL_PRINTF_FORMAT(STRING_INDEX, FIRST_TO_CHECK) __attribute__ ((format (printf, STRING_INDEX, FIRST_TO_CHECK)))
+#    endif // __MINGW_PRINTF_FORMAT
+#else
+// MSVC can't do this iirc
+#    define VL_PRINTF_FORMAT(STRING_INDEX, FIRST_TO_CHECK)
+#endif
+
+#if COMPILER_CL
+#define VL_TODO(msg) PRAGMA(message(LOC_MSVC_STR ": TODO: " msg))
+#else
+#define VL_TODO(msg) PRAGMA(message("TODO: " msg))
+#endif
+
+#ifndef PRINT_TIME_Fmt
+# define PRINT_TIME_Fmt U64_Fmt"mins %02usecs %03u.%03u%03ums"
+#endif
+
+#ifndef PRINT_TIME_Arg
+# define PRINT_TIME_Arg(time) (time/60000000000), (uint32_t)((time/1000000000)%60), \
+    (uint32_t)((time/1000000)%1000), (uint32_t)((time/1000)%1000), (uint32_t)(time%1000)
+#endif
+
+#define LogTimeBetween(stmt, msg) \
+    do { \
+        u64 glue(timer_, __LINE__) = VL_GetNanos(); \
+        stmt;                                             \
+        glue(timer_, __LINE__) = VL_GetNanos() - glue(timer_, __LINE__); \
+        VL_Log(VL_INFO, "%sTime taken: "PRINT_TIME_Fmt, msg, PRINT_TIME_Arg(glue(timer_, __LINE__))); \
+    } while(0)
+
+/* Returns a struct initializer with items in the first element and count in the second */
+#define VL_GetSlice(type, ...) \
+    {(type[]){__VA_ARGS__}, sizeof((type[]){__VA_ARGS__})/sizeof(type)}
+#define VL_GetDaSlice(type, ...) \
+    {.items = (type[]){__VA_ARGS__}, \
+     .count = sizeof((type[]){__VA_ARGS__})/sizeof(type), \
+     .capacity = 0}
+
+#define VL_GetStrSlice(...) VL_GetSlice(const char*, __VA_ARGS__)
+#define VL_GetDaStrSlice(...) VL_GetDaSlice(const char*, __VA_ARGS__)
+
+typedef enum {
+    VL_ECHO,
+    VL_INFO,
+    VL_WARNING,
+    VL_ERROR,
+    VL_QUIET = 8, // in case you want to put something before
+} vl_log_level;
+
+extern vl_log_level VL_MinimalLogLevel;
+VLIBPROC void VL_Log(vl_log_level lvl, const char *fmt, ...) VL_PRINTF_FORMAT(2, 3);
+
+typedef struct {
+    const char **items;
+    size_t count;
+    size_t capacity;
+} vl_file_paths;
+
+struct VL_CopyDirectoryRecursively_opts {
+    const char *src;
+    const char *dst;
+    const char *ext;
+};
+
+VLIBPROC bool MkdirIfNotExist(const char *path);
+VLIBPROC bool VL_CopyFile(const char *src, const char *dst);
+#define VL_CopyDirectoryRecursively(src_path, ...) \
+    VL_CopyDirectoryRecursively_Opt((struct VL_CopyDirectoryRecursively_opts){.src = (src_path), __VA_ARGS__})
+VLIBPROC bool VL_CopyDirectoryRecursively_Impl(const char *src_path, const char *dst_path, const char *ext);
+VLIBPROC bool VL_CopyDirectoryRecursively_Opt(struct VL_CopyDirectoryRecursively_opts opt);
+VLIBPROC bool VL_ReadDirectoryFilesRecursively(const char *parent, vl_file_paths *children);
+VLIBPROC bool VL_ReadEntireDir(const char *parent, vl_file_paths *children);
+VLIBPROC bool VL_DeleteFile(const char *path);
+
+// Initial capacity of a dynamic array
+#ifndef VL_DA_INIT_CAP
+# define VL_DA_INIT_CAP 256
+#endif
+
+#ifdef __cplusplus
+#define VL_DECLTYPE_CAST(T) (decltype(T))
+#else
+#define VL_DECLTYPE_CAST(T)
+#endif
+
+#define DaReserve(da, ExpectedCapacity)                                                  \
+    do {                                                                                 \
+        if((ExpectedCapacity) > (da)->capacity) {                                        \
+            if((da)->capacity == 0) {                                                    \
+                AssertMsg((da)->count == 0,                                              \
+                  "Error: the dyn array has a count > 0 but a 0 capacity\n"              \
+                  "A possible cause is VL_GetSlice. It should only be used when not resizing"); \
+                (da)->capacity = VL_DA_INIT_CAP;                                         \
+            }                                                                            \
+            while((ExpectedCapacity) > (da)->capacity) {                                 \
+                (da)->capacity *= 2;                                                     \
+            }                                                                            \
+            (da)->items = VL_DECLTYPE_CAST((da)->items)VL_REALLOC((da)->items, (da)->capacity * sizeof(*(da)->items)); \
+            Assert((da)->items != NULL && "Buy more RAM lol");                           \
+        }                                                                                \
+    } while(0)
+
+#define DaAppendMany(da, NewItems, NewItemCount)                                        \
+    do {                                                                                \
+        DaReserve((da), (da)->count + (NewItemCount));                                  \
+        memcpy((da)->items + (da)->count, (NewItems), (NewItemCount)*sizeof(*(da)->items)); \
+        (da)->count += (NewItemCount);                                                  \
+    } while(0)
+
+#define DaAppend(da, item)                   \
+    do {                                     \
+        DaReserve((da), (da)->count + 1);    \
+        (da)->items[(da)->count++] = (item); \
+    } while(0)
+
+#define DaFree(da) VL_FREE((da).items)
+#define DaRemoveUnordered(da, i)                     \
+    do {                                             \
+        size_t j = (i);                              \
+        Assert(j < (da)->count);                     \
+        (da)->items[j] = (da)->items[--(da)->count]; \
+    } while(0)
+
+#define DaForeach(Type, it, da) for(Type *it = (da)->items; it < (da)->items + (da)->count; ++it)
+
+typedef struct {
+    char *items;
+    size_t count;
+    size_t capacity;
+} string_builder;
+
+VLIBPROC bool SbReadEntireFile(const char *path, string_builder *sb);
+// Does not append null terminator to sb
+VLIBPROC int SbAppendf(string_builder *sb, const char *fmt, ...) VL_PRINTF_FORMAT(2, 3);
+VLIBPROC bool SbPadAlign(string_builder *sb, size_t size);
+
+#define SbAppendBuf(sb, buf, size) DaAppendMany(sb, buf, size)
+// does not include null character
+#define SbAppendCstr(sb, cstr)  \
+    do {                         \
+        const char *s = (cstr);  \
+        size_t n = strlen(s);    \
+        DaAppendMany(sb, s, n); \
+    } while (0)
+
+#define SbAppendNull(sb) DaAppend(sb, 0)
+#define SbFree(sb) VL_FREE((sb).items)
+
+typedef struct {
+    vl_proc *items;
+    size_t count;
+    size_t capacity;
+} vl_procs;
+
+// Wait until the process has finished
+VLIBPROC bool VL_ProcWait(vl_proc proc);
+
+// Pretty hard to understand, so it's marked as private
+VLIBPROC int VL__ProcWaitAsync(vl_proc proc, int ms);
+
+// Wait until all the processes have finished
+VLIBPROC bool VL_ProcsWait(vl_procs procs);
+
+// Wait until all the processes have finished and empty the procs array.
+VLIBPROC bool VL_ProcsFlush(vl_procs *procs);
+
+typedef struct {
+    const char **items;
+    size_t count;
+    size_t capacity;
+#if OS_WINDOWS
+    bool msvc_linkflags; // need some way to know if you specified /link at some point
+#endif
+} vl_cmd;
+
+typedef struct {
+    vl_cmd *cmd;
+    // Run the command asynchronously appending its VL_Proc to the provided VL_Procs array
+    vl_procs *async;
+    // Maximum processes in the .async list.
+    size_t maxProcs;
+    // redirect to file. 'NUL' and '/dev/null' will work on both windows and linux
+    const char *stdinPath;
+    const char *stdoutPath;
+    const char *stderrPath;
+} vl_cmd_opts;
+
+// Render a string representation of a command into a string builder. Keep in mind the the
+// string builder is not NULL-terminated by default. Use SbAppendNull if you plan to
+// use it as a C string.
+VLIBPROC void VL_CmdRender(vl_cmd cmd, string_builder *render);
+
+VLIBPROC bool CmdRun_Opt(vl_cmd_opts opt);
+/* '/dev/null' on windows will be automatically changed to 'NUL' and vice versa */
+#define CmdRun(Cmd, ...) CmdRun_Opt((vl_cmd_opts){.cmd = (Cmd), __VA_ARGS__})
+
+#define CmdAppend(cmd, ...) \
+    DaAppendMany(cmd, \
+                  ((const char*[]){__VA_ARGS__}), \
+                  (sizeof((const char*[]){__VA_ARGS__})/sizeof(const char*)))
+
+#define CmdExtend(cmd, other_cmd) \
+    DaAppendMany(cmd, (other_cmd)->items, (other_cmd)->count)
+
+#define CmdFree(cmd) VL_FREE(cmd.items)
+
+VLIBPROC int VL_GetCountProcs(void);
+
+VLIBPROC vl_proc VL_CmdStartProcess(vl_cmd cmd, vl_fd *fdin, vl_fd *fdout, vl_fd *fderr, bool render);
+
+VLIBPROC char *temp_sprintf(const char *fmt, ...) VL_PRINTF_FORMAT(1, 2);
+
+#ifndef VL_PUSHD_BUF_MAX
+# define VL_PUSHD_BUF_MAX 32
+#endif
+
+struct vl__pushd_buf_type {
+    const char *items[VL_PUSHD_BUF_MAX];
+    int count;
+};
+extern struct vl__pushd_buf_type VL__pushDirectoryBuffer;
+
+// Given any path returns the last part of that path.
+// "/path/to/a/file.c" -> "file.c"; "/path/to/a/directory" -> "directory"
+VLIBPROC const char *VL_PathName(const char *path);
+VLIBPROC bool VL_Rename(const char *old, const char *New);
+VLIBPROC const char *VL_temp_GetCurrentDir(void);
+VLIBPROC bool VL_SetCurrentDir(const char *path);
+VLIBPROC bool VL_Pushd(const char *path);
+VLIBPROC bool VL_Popd(void);
+// Returns you the directory part of the path allocated on the temporary storage.
+VLIBPROC char *VL_temp_DirName(const char *path);
+VLIBPROC char *VL_temp_FileName(const char *path);
+VLIBPROC char *VL_temp_FileExt(const char *path);
+VLIBPROC char *VL_temp_RunningExecutablePath(void);
+
+VLIBPROC bool VL_GetLastWriteTime(const char *file, u64 *writeTime);
+
+// Only checks the filetime of all the input files vs output file
+#define VL_NeedsRebuild(out, in, ...) VL_NeedsRebuild_Impl(out, ((const char*[]){in, __VA_ARGS__}), sizeof((const char*[]){in, __VA_ARGS__})/sizeof(const char*))
+VLIBPROC int VL_NeedsRebuild_Impl(const char *output_path, const char **input_paths, size_t input_paths_count);
+
+typedef struct vl_filetime_node vl_filetime_node;
+struct vl_filetime_node {
+    view file;
+    u64 time;
+    //bool exploredAllDependencies;
+    vl_filetime_node *next;
+};
+
+#ifndef VL_BUILD_FILETIME_TABLE_SIZE
+#define VL_BUILD_FILETIME_TABLE_SIZE 1024
+#endif // VL_BUILD_FILETIME_TABLE_SIZE
+
+typedef struct {
+    vl_filetime_node *items;
+    size_t count;
+    size_t capacity;
+} vl_filetime_nodelist;
+
+typedef struct {
+    vl_filetime_nodelist nodes;
+    uint32_t countTimes;
+} vl_filetime_table;
+
+typedef struct {
+    vl_filetime_table table;
+    vl_filetime_node *freelist;
+    vl_file_paths *includePaths;
+    memory_arena *Arena;
+} vl_needrebuild_context;
+
+extern vl_needrebuild_context VL_needsRebuildContext;
+
+#ifndef VL_BUILD_FILENAME_HASH
+#define VL_BUILD_FILENAME_HASH(v, hash) do {\
+    /* djb2 */ \
+    hash = 5381; \
+    for(int hashIdx = 0; hashIdx < (int)v.count; hashIdx++) \
+        hash = ((hash << 5) + hash) + v.items[hashIdx]; /* hash * 33 + c */ \
+    } while(0)
+#endif // VL_BUILD_FILENAME_HASH
+
+// 0 is default so if none is chosen, use the current compiler
+typedef enum {
+#if COMPILER_GCC
+    CCompiler_GCC = 0,
+    CCompiler_Clang,
+    CCompiler_MSVC,
+    CCompiler_TCC,
+#elif COMPILER_CLANG
+    CCompiler_Clang = 0,
+    CCompiler_GCC,
+    CCompiler_MSVC,
+    CCompiler_TCC,
+#elif COMPILER_CL
+    CCompiler_MSVC = 0,
+    CCompiler_Clang,
+    CCompiler_GCC,
+    CCompiler_TCC,
+#elif COMPILER_TCC
+    CCompiler_TCC = 0,
+    CCompiler_Clang,
+    CCompiler_MSVC,
+    CCompiler_GCC,
+#endif
+} vl_c_compiler;
+
+struct compiler_info_opts {
+    vl_cmd *cmd;
+    vl_c_compiler cc;
+};
+
+#if OS_WINDOWS
+# define VL_EXE_EXTENSION ".exe"
+# define VL_DLL_EXTENSION ".dll"
+#else
+# define VL_EXE_EXTENSION
+# if __APPLE__
+#  define VL_DLL_EXTENSION ".dynlib"
+# else
+#  define VL_DLL_EXTENSION ".so"
+# endif
+#endif
+
+#if COMPILER_CL
+# define VL_OBJ_EXT ".obj"
+#elif COMPILER_GCC || COMPILER_CLANG || COMPILER_TCC
+# define VL_OBJ_EXT ".o"
+#endif
+
+VLIBPROC void VL_cc_Opt(struct compiler_info_opts opt);
+#define VL_cc(Cmd, ...) VL_cc_Opt((struct compiler_info_opts){.cmd = (Cmd), __VA_ARGS__})
+
+VLIBPROC void VL_ccWarnings_Opt(struct compiler_info_opts opt);
+#define VL_ccWarnings(Cmd, ...) VL_ccWarnings_Opt((struct compiler_info_opts){.cmd = (Cmd), __VA_ARGS__})
+
+VLIBPROC void VL_ccWarningsAsErrors_Opt(struct compiler_info_opts opt);
+#define VL_ccWarningsAsErrors(Cmd, ...) VL_ccWarningsAsErrors_Opt((struct compiler_info_opts){.cmd = (Cmd), __VA_ARGS__})
+
+VLIBPROC void VL_ccOutput_Opt(struct compiler_info_opts opt, const char *output);
+#define VL_ccOutput(Cmd, out, ...) VL_ccOutput_Opt((struct compiler_info_opts){.cmd = (Cmd), __VA_ARGS__}, out)
+
+VLIBPROC void VL_ccDebug_Opt(struct compiler_info_opts opt);
+#define VL_ccDebug(Cmd, ...) VL_ccDebug_Opt((struct compiler_info_opts){.cmd = (Cmd), __VA_ARGS__})
+
+VLIBPROC void VL_ccLib_Opt(struct compiler_info_opts opt, const char *lib);
+#define VL_ccLib(Cmd, lib, ...) VL_ccLib_Opt((struct compiler_info_opts){.cmd = (Cmd), __VA_ARGS__}, lib)
+
+VLIBPROC void VL_ccIncludepath_Opt(struct compiler_info_opts opt, const char *includepath);
+#define VL_ccIncludePath(Cmd, includepath, ...) VL_ccLibpath_Opt((struct compiler_info_opts){.cmd = (Cmd), __VA_ARGS__}, includepath)
+
+VLIBPROC void VL_ccLibpath_Opt(struct compiler_info_opts opt, const char *libpath);
+#define VL_ccLibpath(Cmd, libpath, ...) VL_ccLibpath_Opt((struct compiler_info_opts){.cmd = (Cmd), __VA_ARGS__}, libpath)
+
+typedef enum {
+    Compile_Executable = 0,
+    Compile_Object,
+    Compile_DynamicLibrary,
+    Compile_StaticLibrary,
+} vl_compile_type;
+
+typedef enum {
+    Optimize_Nothing = 0,
+    Optimize_Speed = 1, /* -O3 for gcc, clang, -O2 for msvc */
+    Optimize_Size = 2, /* -Os for gcc, clang, msvc */
+} vl_optimization_option;
+
+typedef struct {
+    vl_c_compiler cc;
+    vl_compile_type type;
+    vl_optimization_option optimize;
+
+    bool debug; /* Adds "-g", "-Zi" or nothing */
+    bool incremental; /* only for msvc */
+    bool gcSections; /* adds "-Wl,--gc-sections", "-opt:ref" or nothing */
+    bool warnings; /* adds "-Wall -Wextra", "-W4" or nothing */
+    bool warningsAsErrors; /* adds "-Werror", "-WX" or nothing */
+    vl_file_paths sourceFiles;
+    const char *output;
+    const char *outputDir;
+    vl_file_paths includePaths;
+    vl_file_paths extraCompilerFlags;
+
+    /* One of these will get chosen, use for disabling specific warnings, etc. */
+    vl_file_paths extraMsvcFlags; /* msvc specific flags */
+    vl_file_paths extraGccClangFlags; /* common gcc/clang/tcc flags */
+    vl_file_paths extraGccFlags; /* gcc specific flags */
+    vl_file_paths extraClangFlags; /* clang specific flags */
+
+    vl_file_paths libPaths;
+    vl_file_paths libs;
+} vl_compile_ctx;
+
+/* Example usage:
+```c
+vl_cmd cmd = {0};
+vl_compile_ctx ctx = {
+    .debug = true,
+    .warnings = true,
+    .sourceFiles = VL_GetDaStrSlice("main.c"),
+    .output = "example", // extension is added in VL_CCompile()
+};
+// default output is executable
+if(!VL_CCompile(&cmd, &ctx)) {
+    fprintf(stderr, "Failed to compile main.c\n");
+}
+```
+ */
+VLIBPROC bool VL_CCompile_Opt(vl_compile_ctx *ctx, vl_cmd_opts opt);
+#define VL_CCompile(Cmd, ctx, ...) \
+    VL_CCompile_Opt((ctx), (vl_cmd_opts){.cmd = (Cmd), __VA_ARGS__})
+
+// Checks the filetime of all input files and all files #included by them
+VLIBPROC int VL_Needs_C_Rebuild(vl_cmd *cmd, vl_compile_ctx *ctx);
+
+VLIBPROC char *VL_GetFilePathFromCompileCtx(vl_compile_ctx *ctx);
+
+typedef enum {
+    VL_INSTALL_MODE_RELEASE,
+    VL_INSTALL_MODE_RELEASE_WITH_DEBUG,
+    VL_INSTALL_MODE_DEBUG,
+} vl_install_mode;
+
+typedef struct {
+    vl_c_compiler cc;
+    vl_install_mode mode;
+    const char *installDir; // if not specified, won't do `cmake --install`
+    vl_file_paths libs;
+    vl_file_paths extraCompilerFlags;
+} vl_install_info;
+
+#ifndef VL_CMAKE_MSVC_GENERATOR
+#define VL_CMAKE_MSVC_GENERATOR "Visual Studio 17 2022"
+#endif
+
+#ifndef VL_CMAKE_MINGW_GENERATOR
+#define VL_CMAKE_MINGW_GENERATOR "MinGW Makefiles"
+#endif
+
+#ifndef VL_CMAKE_MSYS_GENERATOR
+#define VL_CMAKE_MSYS_GENERATOR "MSYS Makefiles"
+#endif
+
+#ifndef VL_CMAKE_UNIX_GENERATOR
+#define VL_CMAKE_UNIX_GENERATOR "Unix Makefiles"
+#endif
+
+#ifndef VL_CMAKE_GCC_GENERATOR
+#if OS_WINDOWS
+#define VL_CMAKE_GCC_GENERATOR VL_CMAKE_MINGW_GENERATOR
+#else
+#define VL_CMAKE_GCC_GENERATOR VL_CMAKE_UNIX_GENERATOR
+#endif
+#endif
+
+#ifndef VL_CMAKE_CLANG_GENERATOR
+#if OS_WINDOWS
+#define VL_CMAKE_CLANG_GENERATOR VL_CMAKE_MINGW_GENERATOR
+#else
+#define VL_CMAKE_CLANG_GENERATOR VL_CMAKE_UNIX_GENERATOR
+#endif
+#endif
+
+/* Dependencies:
+· git: used to clone SDL repo
+> On linux - make sure you have installed: https://wiki.libsdl.org/SDL3/README-linux#build-dependencies
+> On windows - cmake: used to build & install SDL
+
+> Directory structure made by this function:
+ dynamic_libs
+ include
+ └───SDL3
+ lib
+ vendor
+ ├───SDL
+ ├───SDL-build-clang
+ ├───SDL-build-gcc
+ └───SDL-build-msvc
+ *depending on what compiler was chosen it will use vendor/SDL-build-[clang|gcc|msvc]
+
+Usage:
+```c
+vl_cmd cmd = {0};
+vl_install_info sdlInfo = {
+    .mode = VL_INSTALL_MODE_RELEASE, // default to RELEASE
+    .cc = CCompiler_MSVC, // default to current compiler
+};
+if(!Install_SDL3(&cmd, &sdlInfo)) {
+    VL_Log(VL_ERROR, "Could not install SDL3");
+    return -1;
+}
+
+vl_compile_ctx ctx = {
+    .cc = CCompiler_MSVC,
+    .debug = true,
+    .warnings = true,
+    .sourceFiles = VL_GetDaStrSlice("main.c"),
+    .output = "example",
+    .includePaths = VL_GetDaStrSlice("include"),
+    .extraCompilerFlags = sdlInfo.extraCompilerFlags, // used for rpath
+    .libs = sdlInfo.libs,
+    .libPaths = VL_GetDaStrSlice("lib"),
+};
+if(!VL_CCompile(&cmd, &ctx)) {
+    VL_Log(VL_ERROR, "Failed to compile main.c");
+    return -1;
+}
+
+VL_InstallInfoFree(sdlInfo); // remember to free!
+```
+**/
+bool Install_SDL3(vl_cmd *cmd, vl_install_info *info);
+
+#define VL_InstallInfoFree(info) DaFree(info.libs); DaFree(info.extraCompilerFlags)
+
+///////////////////////////////////////////////////////////////
+
+#if OS_WINDOWS
+# if COMPILER_CL
+#  define VL_DEFAULT_REBUILD_URSELF(bin_path, src_path) "cl.exe", "-nologo", "-FC", "-GR-", "-EHa", temp_sprintf("/Fe:%s", bin_path), src_path, "-W4", "-D_CRT_SECURE_NO_WARNINGS"
+#  define VL_CC_DEBUG_INFO "-Zi"
+# elif COMPILER_GCC
+#  if defined(__cplusplus)
+#   define VL_DEFAULT_REBUILD_URSELF(bin_path, src_path) "gcc", "-x", "c++", "-o", bin_path, src_path, "-Wall", "-Wextra"
+#   define VL_CC_DEBUG_INFO "-g"
+#  else
+#   define VL_DEFAULT_REBUILD_URSELF(bin_path, src_path) "gcc", "-x", "c", "-o", bin_path, src_path, "-Wall", "-Wextra"
+#   define VL_CC_DEBUG_INFO "-g"
+#  endif
+# elif COMPILER_CLANG
+#  if defined(__cplusplus)
+#   define VL_DEFAULT_REBUILD_URSELF(bin_path, src_path) "clang", "-x", "c++", "-o", bin_path, src_path, "-Wall", "-Wextra"
+#   define VL_CC_DEBUG_INFO "-g"
+#  else
+#   define VL_DEFAULT_REBUILD_URSELF(bin_path, src_path) "clang", "-x", "c", "-o", bin_path, src_path, "-Wall", "-Wextra"
+#   define VL_CC_DEBUG_INFO "-g"
+#  endif
+# elif COMPILER_TCC
+#  define VL_DEFAULT_REBUILD_URSELF(bin_path, src_path) "tcc", "-o", bin_path, src_path, "-Wall", "-Wextra"
+#  define VL_CC_DEBUG_INFO "-g"
+# endif
+#else
+# if defined(__cplusplus)
+#  define VL_DEFAULT_REBUILD_URSELF(bin_path, src_path) "cc", "-x", "c++", "-o", bin_path, src_path, "-Wall", "-Wextra"
+#  define VL_CC_DEBUG_INFO "-g"
+# else
+#  define VL_DEFAULT_REBUILD_URSELF(bin_path, src_path) "cc", "-x", "c", "-o", bin_path, src_path, "-Wall", "-Wextra"
+#  define VL_CC_DEBUG_INFO "-g"
+# endif
+#endif
+
+#ifndef VL_REBUILD_URSELF
+// In case you just want to add something in, like a "-D" which works on every compiler the same
+# define VL_REBUILD_URSELF(bin_path, src_path) VL_DEFAULT_REBUILD_URSELF(bin_path, src_path)
+#endif
+
+// stolen from nob.h, made it better (imo)
+VLIBPROC void VL__GoRebuildUrself(int argc, char **argv, const char **src_paths, size_t path_count);
+#define VL_GO_REBUILD_URSELF(argc, argv, ...) VL__GoRebuildUrself(argc, argv, ((const char*[]){__FILE__, __VA_ARGS__}), sizeof((const char*[]){__FILE__, __VA_ARGS__})/sizeof(const char*))
+
+#if OS_WINDOWS
+VLIBPROC char *Win32_ErrorMessage(DWORD err);
+#endif
+
+#ifdef VL_BUILD_IMPLEMENTATION
+
+vl_log_level VL_MinimalLogLevel = VL_ECHO;
+
+#if !OS_WINDOWS
+#include <dirent.h>
+#endif
+
+#if OS_WINDOWS
+
+struct dirent {
+    char d_name[MAX_PATH+1];
+};
+
+typedef struct DIR DIR;
+
+static DIR *opendir(const char *dirpath);
+static struct dirent *readdir(DIR *dirp);
+static int closedir(DIR *dirp);
+
+// Base on https://stackoverflow.com/a/75644008
+// > .NET Core uses 4096 * sizeof(WCHAR) buffer on stack for FormatMessageW call. And...thats it.
+// >
+// > https://github.com/dotnet/runtime/blob/3b63eb1346f1ddbc921374a5108d025662fb5ffd/src/coreclr/utilcode/posterror.cpp#L264-L265
+#ifndef VL_WIN32_ERR_MSG_SIZE
+#define VL_WIN32_ERR_MSG_SIZE (4 * 1024)
+#endif // VL_WIN32_ERR_MSG_SIZE
+
+VLIBPROC char *Win32_ErrorMessage(DWORD err)
+{
+    static char win32ErrMsg[VL_WIN32_ERR_MSG_SIZE] = {0};
+    DWORD errMsgSize = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, err, LANG_USER_DEFAULT, win32ErrMsg,
+                                      VL_WIN32_ERR_MSG_SIZE, NULL);
+
+    if(errMsgSize == 0) {
+        if(GetLastError() != ERROR_MR_MID_NOT_FOUND) {
+            if(sprintf(win32ErrMsg, "Could not get error message for 0x%lX", err) > 0) {
+                return (char*)&win32ErrMsg;
+            } else {
+                return NULL;
+            }
+        } else {
+            if(sprintf(win32ErrMsg, "Invalid Windows Error code (0x%lX)", err) > 0) {
+                return (char*)&win32ErrMsg;
+            } else {
+                return NULL;
+            }
+        }
+    }
+
+    while(errMsgSize > 1 && isspace(win32ErrMsg[errMsgSize - 1])) {
+        win32ErrMsg[--errMsgSize] = '\0';
+    }
+
+    return win32ErrMsg;
+}
+#endif
+
+VLIBPROC void VL_Log(vl_log_level lvl, const char *fmt, ...)
+{
+    if(lvl < VL_MinimalLogLevel) return;
+
+    switch(lvl) {
+        case VL_ECHO:
+        case VL_INFO: {
+            fprintf(stderr, "[INFO] ");
+        } break;
+        case VL_WARNING: {
+            fprintf(stderr, "[WARNING] ");
+        } break;
+        case VL_ERROR: {
+            fprintf(stderr, "[ERROR] ");
+        } break;
+        case VL_QUIET: return;
+        default: Assert(!"Unreachable");
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    fprintf(stderr, "\n");
+}
+
+VLIBPROC bool MkdirIfNotExist(const char *path)
+{
+#if OS_WINDOWS
+    int result = _mkdir(path);
+#else
+    int result = mkdir(path, 0755);
+#endif
+    if(result < 0) {
+        if(errno == EEXIST) {
+            VL_Log(VL_ECHO, "directory `%s` already exists", path);
+            return true;
+        }
+        VL_Log(VL_ERROR, "could not create directory `%s`: %s", path, strerror(errno));
+        return false;
+    }
+
+    VL_Log(VL_ECHO, "created directory `%s`", path);
+    return true;
+}
+
+VLIBPROC bool VL_CopyFile(const char *src, const char *dst)
+{
+    VL_Log(VL_ECHO, "copying %s -> %s", src, dst);
+#if OS_WINDOWS
+    if(!CopyFile(src, dst, false)) {
+        VL_Log(VL_ERROR, "Could not copy file: %s", Win32_ErrorMessage(GetLastError()));
+        return false;
+    }
+    return true;
+#else
+    int src_fd = -1;
+    int dst_fd = -1;
+    size_t bufSize = 32*1024;
+    size_t tempMark = temp_save();
+    char *buf = (char*)temp_alloc(bufSize, .Alignment = 1);
+
+    Assert(buf != NULL && "Buy more RAM lol!!");
+    bool result = true;
+
+    src_fd = open(src, O_RDONLY);
+    if(src_fd < 0) {
+        VL_Log(VL_ERROR, "Could not open file %s: %s", src, strerror(errno));
+        VL_ReturnDefer(false);
+    }
+
+    struct stat src_stat;
+    if(fstat(src_fd, &src_stat) < 0) {
+        VL_Log(VL_ERROR, "Could not get mode of file %s: %s", src, strerror(errno));
+        VL_ReturnDefer(false);
+    }
+
+    dst_fd = open(dst, O_CREAT | O_TRUNC | O_WRONLY, src_stat.st_mode);
+    if(dst_fd < 0) {
+        VL_Log(VL_ERROR, "Could not create file %s: %s", dst, strerror(errno));
+        VL_ReturnDefer(false);
+    }
+
+    for(;;) {
+        ssize_t n = read(src_fd, buf, bufSize);
+        if(n == 0) break;
+        if(n < 0) {
+            VL_Log(VL_ERROR, "Could not read from file %s: %s", src, strerror(errno));
+            VL_ReturnDefer(false);
+        }
+        char *buf2 = buf;
+        while (n > 0) {
+            ssize_t m = write(dst_fd, buf2, n);
+            if(m < 0) {
+                VL_Log(VL_ERROR, "Could not write to file %s: %s", dst, strerror(errno));
+                VL_ReturnDefer(false);
+            }
+            n    -= m;
+            buf2 += m;
+        }
+    }
+
+defer:
+    temp_rewind(tempMark);
+    close(src_fd);
+    close(dst_fd);
+    return result;
+#endif
+}
+
+VLIBPROC bool VL_CopyDirectoryRecursively_Impl(const char *src, const char *dst, const char *ext)
+{
+    bool result = true;
+    vl_file_paths children = {0};
+    string_builder srcSb = {0};
+    string_builder dstSb = {0};
+    size_t tempCheckpoint = temp_save();
+
+    file_type type = VL_GetFileType(src);
+    if(type < 0) return false;
+
+    switch(type) {
+        case VL_FILE_DIRECTORY: {
+            if(!MkdirIfNotExist(dst)) VL_ReturnDefer(false);
+            if(!VL_ReadEntireDir(src, &children)) VL_ReturnDefer(false);
+
+            for(size_t i = 0; i < children.count; i++) {
+                if(!strcmp(children.items[i], ".")) continue;
+                if(!strcmp(children.items[i], "..")) continue;
+
+                srcSb.count = 0;
+                SbAppendCstr(&srcSb, src);
+                SbAppendCstr(&srcSb, "/");
+                SbAppendCstr(&srcSb, children.items[i]);
+                SbAppendNull(&srcSb);
+
+                dstSb.count = 0;
+                SbAppendCstr(&dstSb, dst);
+                SbAppendCstr(&dstSb, "/");
+                SbAppendCstr(&dstSb, children.items[i]);
+                SbAppendNull(&dstSb);
+
+                if(!VL_CopyDirectoryRecursively_Impl(srcSb.items, dstSb.items, ext)) {
+                    VL_ReturnDefer(false);
+                }
+            }
+        } break;
+
+        case VL_FILE_REGULAR: {
+            if(ViewEndsWith(ViewFromCstr(src), ViewFromCstr(ext)) && !VL_CopyFile(src, dst)) {
+                VL_ReturnDefer(false);
+            }
+        } break;
+
+        case VL_FILE_SYMLINK: {
+            VL_Log(VL_WARNING, "TODO: Copying symlinks is not supported yet");
+        } break;
+
+        case VL_FILE_OTHER: {
+            VL_Log(VL_ERROR, "Unsupported type of file %s", src);
+            VL_ReturnDefer(false);
+        } break;
+
+        default: Assert(!"Unreachable");
+    }
+
+defer:
+    temp_rewind(tempCheckpoint);
+    DaFree(srcSb);
+    DaFree(dstSb);
+    DaFree(children);
+    return result;
+}
+
+VLIBPROC bool VL_CopyDirectoryRecursively_Opt(struct VL_CopyDirectoryRecursively_opts opt)
+{
+    AssertMsg(opt.src != 0, "Invalid parameter: src directory is null");
+    if(opt.dst == 0) opt.dst = ".";
+    if(opt.ext == 0) opt.ext = "";
+
+    VL_Log(VL_ECHO, "copying %s/*%s -> %s", opt.src, opt.ext, opt.dst);
+
+    vl_log_level prevLogLevel = VL_MinimalLogLevel;
+    VL_MinimalLogLevel = VL_INFO;
+    bool ok = VL_CopyDirectoryRecursively_Impl(opt.src, opt.dst, opt.ext);
+    VL_MinimalLogLevel = prevLogLevel;
+
+    return ok;
+}
+
+VLIBPROC bool VL_ReadDirectoryFilesRecursively(const char *parent, vl_file_paths *children)
+{
+    bool result = true;
+
+    vl_file_paths children_tmp = {0};
+    string_builder src_sb = {0};
+
+    file_type type = VL_GetFileType(parent);
+    if(type < 0) return false;
+
+    switch(type) {
+        case VL_FILE_DIRECTORY: {
+            if(!VL_ReadEntireDir(parent, &children_tmp)) VL_ReturnDefer(false);
+
+            for(size_t i = 0; i < children_tmp.count; ++i) {
+                if(strcmp(children_tmp.items[i], ".") == 0) continue;
+                if(strcmp(children_tmp.items[i], "..") == 0) continue;
+
+                src_sb.count = 0;
+                SbAppendCstr(&src_sb, parent);
+                SbAppendCstr(&src_sb, "/");
+                SbAppendCstr(&src_sb, children_tmp.items[i]);
+                SbAppendNull(&src_sb);
+
+                if(!VL_ReadDirectoryFilesRecursively(src_sb.items, children)) {
+                    VL_ReturnDefer(false);
+                }
+            }
+        } break;
+
+        case VL_FILE_REGULAR:
+        case VL_FILE_SYMLINK: {
+            DaAppend(children, temp_strdup(parent));
+        } break;
+
+        case VL_FILE_OTHER: {
+            VL_Log(VL_ERROR, "Unsupported type of file %s", parent);
+            VL_ReturnDefer(false);
+        } break;
+
+        default: Assert(!"unreachable");
+    }
+
+defer:
+    DaFree(children_tmp);
+    DaFree(src_sb);
+    return result;
+}
+
+VLIBPROC bool VL_ReadEntireDir(const char *parent, vl_file_paths *children)
+{
+    bool result = true;
+    DIR *dir = NULL;
+    struct dirent *ent = NULL;
+
+    dir = opendir(parent);
+    if (dir == NULL) {
+        #ifdef _WIN32
+        VL_Log(VL_ERROR, "Could not open directory %s: %s", parent, Win32_ErrorMessage(GetLastError()));
+        #else
+        VL_Log(VL_ERROR, "Could not open directory %s: %s", parent, strerror(errno));
+        #endif // _WIN32
+        VL_ReturnDefer(false);
+    }
+
+    errno = 0;
+    ent = readdir(dir);
+    while (ent != NULL) {
+        DaAppend(children, temp_strdup(ent->d_name));
+        ent = readdir(dir);
+    }
+
+    if (errno != 0) {
+        #ifdef _WIN32
+        VL_Log(VL_ERROR, "Could not read directory %s: %s", parent, Win32_ErrorMessage(GetLastError()));
+        #else
+        VL_Log(VL_ERROR, "Could not read directory %s: %s", parent, strerror(errno));
+        #endif // _WIN32
+        VL_ReturnDefer(false);
+    }
+
+defer:
+    if (dir) closedir(dir);
+    return result;
+}
+
+VLIBPROC bool VL_DeleteFile(const char *path)
+{
+    VL_Log(VL_ECHO, "deleting %s", path);
+#ifdef _WIN32
+    if(!DeleteFileA(path)) {
+        VL_Log(VL_ERROR, "Could not delete file %s: %s", path, Win32_ErrorMessage(GetLastError()));
+        return false;
+    }
+    return true;
+#else
+    if(remove(path) < 0) {
+        VL_Log(VL_ERROR, "Could not delete file %s: %s", path, strerror(errno));
+        return false;
+    }
+    return true;
+#endif // _WIN32
+}
+
+VLIBPROC bool SbReadEntireFile(const char *path, string_builder *sb)
+{
+    bool result = true;
+
+    FILE *f = fopen(path, "rb");
+    size_t new_count = 0;
+    long long m = 0;
+    if(f == NULL)                 VL_ReturnDefer(false);
+    if(fseek(f, 0, SEEK_END) < 0) VL_ReturnDefer(false);
+#ifndef _WIN32
+    m = ftell(f);
+#else
+    m = _ftelli64(f);
+#endif
+    if(m < 0)                     VL_ReturnDefer(false);
+    if(fseek(f, 0, SEEK_SET) < 0) VL_ReturnDefer(false);
+
+    new_count = sb->count + m;
+    if(new_count > sb->capacity) {
+        sb->items = VL_DECLTYPE_CAST(sb->items)VL_REALLOC(sb->items, new_count);
+        Assert(sb->items != NULL && "Buy more RAM lool!!");
+        sb->capacity = new_count;
+    }
+
+    fread(sb->items + sb->count, m, 1, f);
+    if(ferror(f)) {
+        VL_Log(VL_ERROR, "Could not read file %s", path);
+        fclose(f);
+        return false;
+    }
+    sb->count = new_count;
+
+defer:
+    if(!result) VL_Log(VL_ERROR, "Could not read file %s: %s", path, strerror(errno));
+    if(f) fclose(f);
+    return result;
+}
+
+VLIBPROC int SbAppendf(string_builder *sb, const char *fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    int n = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    // NOTE: the new_capacity needs to be +1 because of the null terminator.
+    // However, further below we increase sb->count by n, not n + 1.
+    // This is because we don't want the sb to include the null terminator. The user can always Sbappend_null() if they want it
+    DaReserve(sb, sb->count + n + 1);
+    char *dest = sb->items + sb->count;
+    va_start(args, fmt);
+    vsnprintf(dest, n+1, fmt, args);
+    va_end(args);
+
+    sb->count += n;
+
+    return n;
+}
+
+VLIBPROC bool SbPadAlign(string_builder *sb, size_t size)
+{
+    size_t rem = sb->count%size;
+    if(rem == 0) return true;
+    for(size_t i = 0; i < size - rem; ++i) {
+        DaAppend(sb, 0);
+    }
+    return true;
+}
+
+VLIBPROC bool VL_ProcWait(vl_proc proc)
+{
+    if(proc == VL_INVALID_PROC) return false;
+
+#ifdef _WIN32
+    DWORD result = WaitForSingleObject(
+                       proc,    // HANDLE hHandle,
+                       INFINITE // DWORD  dwMilliseconds
+                   );
+
+    if(result == WAIT_FAILED) {
+        VL_Log(VL_ERROR, "could not wait on child process: %s", Win32_ErrorMessage(GetLastError()));
+        return false;
+    }
+
+    DWORD exit_status;
+    if(!GetExitCodeProcess(proc, &exit_status)) {
+        VL_Log(VL_ERROR, "could not get process exit code: %s", Win32_ErrorMessage(GetLastError()));
+        return false;
+    }
+
+    if(exit_status != 0) {
+        VL_Log(VL_ERROR, "command exited with exit code %lu", exit_status);
+        return false;
+    }
+
+    CloseHandle(proc);
+
+    return true;
+#else
+    for(;;) {
+        int wstatus = 0;
+        if(waitpid(proc, &wstatus, 0) < 0) {
+            VL_Log(VL_ERROR, "could not wait on command (pid %d): %s", proc, strerror(errno));
+            return false;
+        }
+
+        if(WIFEXITED(wstatus)) {
+            int exit_status = WEXITSTATUS(wstatus);
+            if(exit_status != 0) {
+                VL_Log(VL_ERROR, "command exited with exit code %d", exit_status);
+                return false;
+            }
+
+            break;
+        }
+
+        if(WIFSIGNALED(wstatus)) {
+            VL_Log(VL_ERROR, "command process was terminated by signal %d", WTERMSIG(wstatus));
+            return false;
+        }
+    }
+
+    return true;
+#endif
+}
+
+VLIBPROC int VL__ProcWaitAsync(vl_proc proc, int ms)
+{
+    if (proc == VL_INVALID_PROC) return false;
+
+#ifdef _WIN32
+    DWORD result = WaitForSingleObject(
+                       proc,    // HANDLE hHandle,
+                       ms       // DWORD  dwMilliseconds
+                   );
+
+    if(result == WAIT_TIMEOUT) {
+        return 0;
+    }
+
+    if(result == WAIT_FAILED) {
+        VL_Log(VL_ERROR, "could not wait on child process: %s", Win32_ErrorMessage(GetLastError()));
+        return -1;
+    }
+
+    DWORD exit_status;
+    if(!GetExitCodeProcess(proc, &exit_status)) {
+        VL_Log(VL_ERROR, "could not get process exit code: %s", Win32_ErrorMessage(GetLastError()));
+        return -1;
+    }
+
+    if(exit_status != 0) {
+        VL_Log(VL_ERROR, "command exited with exit code %lu", exit_status);
+        return -1;
+    }
+
+    CloseHandle(proc);
+
+    return 1;
+#else
+    long ns = ms*1000*1000;
+    struct timespec duration = {
+        .tv_sec = ns/(1000*1000*1000),
+        .tv_nsec = ns%(1000*1000*1000),
+    };
+
+    int wstatus = 0;
+    pid_t pid = waitpid(proc, &wstatus, WNOHANG);
+    if(pid < 0) {
+        VL_Log(VL_ERROR, "could not wait on command (pid %d): %s", proc, strerror(errno));
+        return -1;
+    }
+
+    if(pid == 0) {
+        nanosleep(&duration, NULL);
+        return 0;
+    }
+
+    if(WIFEXITED(wstatus)) {
+        int exit_status = WEXITSTATUS(wstatus);
+        if(exit_status != 0) {
+            VL_Log(VL_ERROR, "command exited with exit code %d", exit_status);
+            return -1;
+        }
+
+        return 1;
+    }
+
+    if(WIFSIGNALED(wstatus)) {
+        VL_Log(VL_ERROR, "command process was terminated by signal %d", WTERMSIG(wstatus));
+        return -1;
+    }
+
+    nanosleep(&duration, NULL);
+    return 0;
+#endif
+}
+
+// Wait until all the processes have finished
+VLIBPROC bool VL_ProcsWait(vl_procs procs)
+{
+    bool ok = true;
+    for(size_t i = 0; i < procs.count; ++i) {
+        ok = VL_ProcWait(procs.items[i]) && ok;
+    }
+    return ok;
+}
+
+// Wait until all the processes have finished and empty the procs array.
+VLIBPROC bool VL_ProcsFlush(vl_procs *procs)
+{
+    bool ok = VL_ProcsWait(*procs);
+    procs->count = 0;
+    return ok;
+}
+
+VLIBPROC void VL_CmdRender(vl_cmd cmd, string_builder *render)
+{
+    for(size_t i = 0; i < cmd.count; ++i) {
+        const char *arg = cmd.items[i];
+        if(arg == NULL) break;
+        if(i > 0) SbAppendCstr(render, " ");
+        if(!strchr(arg, ' ')) {
+            SbAppendCstr(render, arg);
+        } else {
+            DaAppend(render, '\'');
+            SbAppendCstr(render, arg);
+            DaAppend(render, '\'');
+        }
+    }
+}
+
+VLIBPROC bool CmdRun_Opt(vl_cmd_opts opt)
+{
+    bool result = true;
+    vl_fd fdin = VL_INVALID_FD;
+    vl_fd fdout = VL_INVALID_FD;
+    vl_fd fderr = VL_INVALID_FD;
+    vl_proc proc = VL_INVALID_PROC;
+    vl_fd *optFdin = 0;
+    vl_fd *optFdout = 0;
+    vl_fd *optFderr = 0;
+
+    size_t max_procs = opt.maxProcs > 0 ? opt.maxProcs : (size_t) VL_GetCountProcs() + 1;
+
+    if(opt.async && max_procs > 0) {
+        while(opt.async->count >= max_procs) {
+            for(size_t i = 0; i < opt.async->count; ++i) {
+                int ret = VL__ProcWaitAsync(opt.async->items[i], 1);
+                if(ret < 0) VL_ReturnDefer(false);
+                if(ret) {
+                    DaRemoveUnordered(opt.async, i);
+                    break;
+                }
+            }
+        }
+    }
+
+    if(opt.stdinPath) {
+        fdin = VL_FopenForRead(opt.stdinPath);
+        if(fdin == VL_INVALID_FD) VL_ReturnDefer(false);
+        optFdin = &fdin;
+    }
+    if(opt.stdoutPath) {
+        fdout = VL_FopenForWrite(opt.stdoutPath);
+        if(fdout == VL_INVALID_FD) VL_ReturnDefer(false);
+        optFdout = &fdout;
+    }
+    if(opt.stderrPath) {
+        fderr = VL_FopenForWrite(opt.stderrPath);
+        if(fderr == VL_INVALID_FD) VL_ReturnDefer(false);
+        optFderr = &fderr;
+    }
+    proc = VL_CmdStartProcess(*opt.cmd, optFdin, optFdout, optFderr, true);
+
+    if(opt.async) {
+        if(proc == VL_INVALID_PROC) VL_ReturnDefer(false);
+        DaAppend(opt.async, proc);
+    } else {
+        if(!VL_ProcWait(proc)) VL_ReturnDefer(false);
+    }
+
+defer:
+    if(optFdin)  VL_FileClose(*optFdin);
+    if(optFdout) VL_FileClose(*optFdout);
+    if(optFderr) VL_FileClose(*optFderr);
+    opt.cmd->count = 0;
+#if OS_WINDOWS
+    opt.cmd->msvc_linkflags = 0;
+#endif
+    return result;
+}
+
+VLIBPROC int VL_GetCountProcs(void)
+{
+    static int count = 0;
+    if(count != 0) return count;
+#ifdef _WIN32
+    SYSTEM_INFO siSysInfo;
+    GetSystemInfo(&siSysInfo);
+    count = siSysInfo.dwNumberOfProcessors;
+#else
+    count = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+    return count;
+}
+
+VLIBPROC char *temp_sprintf(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int n = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    Assert(n >= 0);
+    char *result = (char*)ArenaPushSize(&ArenaTemp, n + 1, .Alignment = 1);
+    va_start(args, fmt);
+    vsnprintf(result, n + 1, fmt, args);
+    va_end(args);
+
+    return result;
+}
+
+VLIBPROC const char *VL_PathName(const char *path)
+{
+#ifdef _WIN32
+    const char *p1 = strrchr(path, '/');
+    const char *p2 = strrchr(path, '\\');
+    const char *p = (p1 > p2)? p1 : p2;  // NULL is ignored if the other search is successful
+    return p ? p + 1 : path;
+#else
+    const char *p = strrchr(path, '/');
+    return p ? p + 1 : path;
+#endif // _WIN32
+}
+
+VLIBPROC bool VL_Rename(const char *old_path, const char *new_path)
+{
+    VL_Log(VL_ECHO, "renaming %s -> %s", old_path, new_path);
+#ifdef _WIN32
+    if(!MoveFileEx(old_path, new_path, MOVEFILE_REPLACE_EXISTING)) {
+        VL_Log(VL_ERROR, "could not rename %s to %s: %s", old_path, new_path, Win32_ErrorMessage(GetLastError()));
+        return false;
+    }
+#else
+    if(rename(old_path, new_path) < 0) {
+        VL_Log(VL_ERROR, "could not rename %s to %s: %s", old_path, new_path, strerror(errno));
+        return false;
+    }
+#endif // _WIN32
+    return true;
+}
+
+VLIBPROC bool VL_GetLastWriteTime(const char *file, u64 *writeTime)
+{
+    bool result = true;
+    if(!GetLastWriteTime(file, writeTime)) {
+#ifdef _WIN32
+        VL_Log(VL_ERROR, "Could not get filetime of '%s': %s", file, Win32_ErrorMessage(GetLastError()));
+#else
+        VL_Log(VL_ERROR, "Could not get filetime of '%s': %s", file, strerror(errno));
+#endif
+        result = false;
+    }
+    return result;
+}
+
+VLIBPROC int VL_NeedsRebuild_Impl(const char *output_path, const char **input_paths, size_t input_paths_count)
+{
+    u64 outputFileTime;
+    if(!GetLastWriteTime(output_path, &outputFileTime)) return 1;
+
+    for(size_t i = 0; i < input_paths_count; ++i) {
+        const char *input_path = input_paths[i];
+        u64 inputFileTime;
+        if(!VL_GetLastWriteTime(input_path, &inputFileTime)) return -1;
+
+        // NOTE: if even a single input_path is fresher than output_path that's 100% rebuild
+        if(inputFileTime > outputFileTime) return 1;
+    }
+
+    return 0;
+}
+
+VLIBPROC char *VL_GetFilePathFromCompileCtx(vl_compile_ctx *ctx)
+{
+    char *output = temp_sprintf("%s/%s", ctx->outputDir, ctx->output);
+    AssertMsg(output || (ctx->type == Compile_Object),
+        "Output path must be specified unless compiling for object file output");
+#if OS_WINDOWS
+    if(ctx->type == Compile_Executable) {
+        output = temp_sprintf("%s.exe", output);
+    }
+#else
+    if(ctx->type == Compile_Executable) {}
+#endif
+    else if(ctx->type == Compile_Object) {
+        if(output) {
+            if(ctx->cc == CCompiler_MSVC) {
+                output = temp_sprintf("%s.obj", output);
+            } else {
+                output = temp_sprintf("%s.o", output);
+            }
+        }
+    } else if(ctx->type == Compile_DynamicLibrary) {
+        output = temp_sprintf("%s" VL_DLL_EXTENSION, output);
+    } else if(ctx->type == Compile_StaticLibrary) {
+        if(ctx->cc == CCompiler_MSVC) {
+            output = temp_sprintf("%s.obj", output);
+        } else {
+            output = temp_sprintf("%s.o", output);
+        }
+    }
+    return output;
+}
+
+VLIBPROC int VL_Needs_C_Rebuild(vl_cmd *cmd, vl_compile_ctx *ctx)
+{
+#if COMPILER_GCC
+    CmdAppend(cmd, "gcc", "-MM");
+#elif COMPILER_CLANG
+    CmdAppend(cmd, "clang", "-MM");
+#elif COMPILER_CL
+    CmdAppend(cmd, "cl", "/showIncludes", "/Zs", "/nologo");
+#else
+    // unimplemented
+    return -1;
+#endif
+
+    size_t iniMark = temp_save();
+
+    const char *output = VL_GetFilePathFromCompileCtx(ctx);
+
+    int needsRebuildSimple = VL_NeedsRebuild_Impl(output, ctx->sourceFiles.items, ctx->sourceFiles.count);
+    if(needsRebuildSimple != 0) {
+        temp_rewind(iniMark);
+        return needsRebuildSimple;
+    }
+
+    DaAppendMany(cmd, ctx->sourceFiles.items, ctx->sourceFiles.count);
+    struct compiler_info_opts info = {
+        .cmd = cmd,
+        .cc = ctx->cc,
+    };
+    for(size_t i = 0; i < ctx->includePaths.count; i++) {
+        VL_ccIncludepath_Opt(info, ctx->includePaths.items[i]);
+    }
+
+    int result = 0;
+    vl_fd read;
+    vl_fd write;
+    if(!VL_Pipe(&read, &write)) {
+        VL_Log(VL_ERROR, "Could not create pipe for VL_Needs_C_Rebuild");
+        temp_rewind(iniMark);
+        return -1;
+    }
+
+    vl_proc proc = VL_CmdStartProcess(*cmd, 0, &write, 0, false);
+    VL_FileClose(write);
+
+    char *abuf = (char*)ArenaTemp.base + ArenaTemp.used;
+
+    char buf[2048];
+    for(;;) {
+        uint32_t bytesRead;
+        if(!VL_FileRead(read, buf, (uint32_t)sizeof(buf), &bytesRead)) {
+            break;
+        }
+
+        if(ArenaTemp.used + (size_t)bytesRead >= ArenaTemp.size) {
+            VL_Log(VL_ERROR, "No memory left in VL_Needs_C_Rebuild");
+            VL_ReturnDefer(-1);
+        }
+        mem_copy_non_overlapping(ArenaTemp.base + ArenaTemp.used, buf, bytesRead);
+        ArenaTemp.used += bytesRead;
+    }
+
+    size_t callMemSize = ArenaTemp.used - iniMark;
+    view *includes;
+    size_t countIncludes = 0;
+
+#if COMPILER_GCC || COMPILER_CLANG
+    // NOTE: Full format:
+    // file1.o: file1.c <include list>
+    // file2.o: file2.c <include list>
+    // etc.
+    view data = ViewTrimRight(ViewFromParts(abuf, callMemSize));
+
+    includes = (view*)(ArenaTemp.base + ArenaTemp.used + ArenaGetAlignmentOffset(&ArenaTemp, sizeof(view)));
+
+    ViewIterateLines(&data, lineIdx, line) {
+        // NOTE: "file.o: "
+        ViewChopByView(&line, VIEW(": "));
+        // NOTE: "file.c"
+        ViewChopByDelim(&line, ' ');
+
+        while(line.count > 0) {
+            view inc = ViewChopByDelim(&line, ' ');
+            if(inc.items[0] == '\\') {
+                /* Skip '\n' and ' ' after '\n' */
+                line = ViewChopByLine(&data);
+                line.items++;
+                line.count--;
+                continue;
+            }
+
+            if(ArenaTemp.used + sizeof(view) >= ArenaTemp.size) {
+                VL_Log(VL_ERROR, "No memory left in VL_Needs_C_Rebuild");
+                VL_ReturnDefer(-1);
+            }
+            mem_copy_non_overlapping(includes + countIncludes, &inc, sizeof(view));
+            ArenaTemp.used += sizeof(view);
+
+            countIncludes++;
+        }
+    }
+
+#elif COMPILER_CL
+    view data = ViewFromParts(abuf, callMemSize);
+    //printf(VIEW_FMT, VIEW_ARG(data));
+
+    includes = (view*)(ArenaTemp.base + ArenaTemp.used + ArenaGetAlignmentOffset(&ArenaTemp, sizeof(view)));
+
+    ViewIterateLines(&data, lineIdx, line) {
+        if(ViewChopStartsWith(&line, VIEW("Note: including file: "))) {
+            if(ArenaTemp.used + sizeof(view) >= ArenaTemp.size) {
+                VL_Log(VL_ERROR, "No memory left in VL_Needs_C_Rebuild");
+                VL_ReturnDefer(-1);
+            }
+            // Remove spaces from the left showing include depth
+            line = ViewTrimLeft(line);
+            mem_copy_non_overlapping(includes + countIncludes, &line, sizeof(view));
+            ArenaTemp.used += sizeof(view);
+
+            countIncludes++;
+        } else {
+            // NOTE: This is a source filename, maybe it's useful to handle this later
+        }
+    }
+#endif
+
+    uint64_t outputFileTime;
+    if(!GetLastWriteTime(output, &outputFileTime)) return 1;
+
+    char path[VL_PATH_MAX+1];
+    for(size_t i = 0; i < countIncludes; i++) {
+        view inc = includes[i];
+        if(inc.count > VL_PATH_MAX) {
+            VL_Log(VL_WARNING, "Ignoring file '"VIEW_FMT"' because its path is longer than max path",
+                   VIEW_ARG(inc));
+            continue;
+        }
+
+        mem_copy_non_overlapping(path, inc.items, inc.count);
+        path[inc.count] = '\0';
+
+        u64 inputFileTime;
+        if(!VL_GetLastWriteTime(path, &inputFileTime)) VL_ReturnDefer(-1);
+
+        // NOTE: if even a single input_path is fresher than output_path that's 100% rebuild
+        if(inputFileTime > outputFileTime) VL_ReturnDefer(1);
+    }
+
+defer:
+    if(!VL_ProcWait(proc)) {
+        VL_Log(VL_ERROR, "Could not wait for process to get includes");
+        result = -1;
+    }
+
+    VL_FileClose(read);
+
+    temp_rewind(iniMark);
+
+    return result;
+}
+
+VLIBPROC const char *VL_temp_GetCurrentDir(void)
+{
+#ifdef _WIN32
+    DWORD nBufferLength = GetCurrentDirectory(0, NULL);
+    if (nBufferLength == 0) {
+        VL_Log(VL_ERROR, "could not get current directory: %s", Win32_ErrorMessage(GetLastError()));
+        return NULL;
+    }
+
+    char *buffer = (char*) temp_alloc(nBufferLength, .Alignment = 1);
+    if (GetCurrentDirectory(nBufferLength, buffer) == 0) {
+        VL_Log(VL_ERROR, "could not get current directory: %s", Win32_ErrorMessage(GetLastError()));
+        return NULL;
+    }
+
+    return buffer;
+#else
+    char *buffer = (char*) temp_alloc(PATH_MAX, .Alignment = 1);
+    if (getcwd(buffer, PATH_MAX) == NULL) {
+        VL_Log(VL_ERROR, "could not get current directory: %s", strerror(errno));
+        return NULL;
+    }
+
+    return buffer;
+#endif // _WIN32
+}
+
+struct vl__pushd_buf_type VL__pushDirectoryBuffer;
+
+VLIBPROC bool VL_Pushd(const char *path)
+{
+    static bool initialized = false;
+    if(!initialized) {
+        initialized = true;
+        VL__pushDirectoryBuffer.items[0] = temp_strdup(VL_temp_GetCurrentDir());
+        VL__pushDirectoryBuffer.count = 1;
+    }
+
+    AssertMsgAlways((VL__pushDirectoryBuffer.count+1) < VL_PUSHD_BUF_MAX, "Increase the size of the pushd buffer (VL_PUSHD_BUF_MAX)");
+    bool ok = VL_SetCurrentDir(path);
+    if(ok) {
+        VL__pushDirectoryBuffer.items[VL__pushDirectoryBuffer.count] =
+            temp_sprintf("%s/%s", VL__pushDirectoryBuffer.items[VL__pushDirectoryBuffer.count - 1], path);
+        VL__pushDirectoryBuffer.count++;
+    } else {
+#if defined(_WIN32)
+        VL_Log(VL_ERROR, "could not set current directory to %s: %s", path, Win32_ErrorMessage(GetLastError()));
+#else
+        VL_Log(VL_ERROR, "could not set current directory to %s: %s", path, strerror(errno));
+#endif
+    }
+    return ok;
+}
+
+VLIBPROC bool VL_Popd(void)
+{
+    AssertMsg(VL__pushDirectoryBuffer.count > 1, "Need to do pushd before popd");
+    const char *path = VL__pushDirectoryBuffer.items[VL__pushDirectoryBuffer.count - 2];
+    bool ok = VL_SetCurrentDir(path);
+    if(ok) VL__pushDirectoryBuffer.count--;
+    else {
+#if defined(_WIN32)
+        VL_Log(VL_ERROR, "could not set current directory to %s: %s", path, Win32_ErrorMessage(GetLastError()));
+#else
+        VL_Log(VL_ERROR, "could not set current directory to %s: %s", path, strerror(errno));
+#endif
+    }
+    return ok;
+}
+
+VLIBPROC char *VL_temp_DirName(const char *path)
+{
+#ifndef _WIN32
+    // Stolen from the musl's implementation of dirname.
+    // We are implementing our own one because libc vendors cannot agree on whether dirname(3)
+    // modifies the path or not.
+    if(!path || !*path) return temp_strndup(".", 1);
+    size_t i = strlen(path) - 1;
+    for(; path[i] == '/'; i--) if(!i) return temp_strndup("/", 1);
+    for(; path[i] != '/'; i--) if(!i) return temp_strndup(".", 1);
+    for(; path[i] == '/'; i--) if(!i) return temp_strndup("/", 1);
+    return temp_strndup(path, i + 1);
+#else
+    if(!path) path = ""; // Treating NULL as empty.
+    char *drive = temp_alloc(_MAX_DRIVE, .Alignment = 1);
+    char *dir   = temp_alloc(_MAX_DIR, .Alignment = 1);
+    // https://learn.microsoft.com/en-us/previous-versions/visualstudio/visual-studio-2010/8e46eyt7(v=vs.100)
+    errno_t ret = _splitpath_s(path, drive, _MAX_DRIVE, dir, _MAX_DIR, NULL, 0, NULL, 0);
+    Assert(ret == 0);
+    return temp_sprintf("%s%s", drive, dir);
+#endif // _WIN32
+}
+
+VLIBPROC char *VL_temp_FileName(const char *path)
+{
+#ifndef _WIN32
+    // Stolen from the musl's implementation of dirname.
+    // We are implementing our own one because libc vendors cannot agree on whether basename(3)
+    // modifies the path or not.
+    if(!path || !*path) return temp_strndup(".", 1);
+    size_t i = strlen(path)-1;
+    char *s = temp_strndup(path, i);
+    for(; i&&s[i]=='/'; i--) s[i] = 0;
+    for(; i&&s[i-1]!='/'; i--);
+    return s+i;
+#else
+    if(!path) path = ""; // Treating NULL as empty.
+    char *fname = temp_alloc(_MAX_FNAME, .Alignment = 1);
+    char *ext = temp_alloc(_MAX_EXT, .Alignment = 1);
+    // https://learn.microsoft.com/en-us/previous-versions/visualstudio/visual-studio-2010/8e46eyt7(v=vs.100)
+    errno_t ret = _splitpath_s(path, NULL, 0, NULL, 0, fname, _MAX_FNAME, ext, _MAX_EXT);
+    Assert(ret == 0);
+    return temp_sprintf("%s%s", fname, ext);
+#endif // _WIN32
+}
+
+VLIBPROC char *VL_temp_FileExt(const char *path)
+{
+#ifndef _WIN32
+    return strrchr(VL_temp_FileName(path), '.');
+#else
+    if(!path) path = ""; // Treating NULL as empty.
+    char *ext = temp_alloc(_MAX_EXT, .Alignment = 1);
+    // https://learn.microsoft.com/en-us/previous-versions/visualstudio/visual-studio-2010/8e46eyt7(v=vs.100)
+    errno_t ret = _splitpath_s(path, NULL, 0, NULL, 0, NULL, 0, ext, _MAX_EXT);
+    Assert(ret == 0);
+    return ext;
+#endif // _WIN32
+}
+
+VLIBPROC char *VL_temp_RunningExecutablePath(void)
+{
+#if defined(__linux__)
+    char buf[4096];
+    int length = readlink("/proc/self/exe", buf, ArrayLen(buf));
+    if(length < 0) return temp_strndup("", 0);
+    return temp_strndup(buf, length);
+#elif defined(_WIN32)
+    char buf[MAX_PATH];
+    int length = GetModuleFileNameA(NULL, buf, MAX_PATH);
+    return temp_strndup(buf, length);
+#elif defined(__APPLE__)
+    char buf[4096];
+    uint32_t size = ArrayLen(buf);
+    if(_NSGetExecutablePath(buf, &size) != 0) return temp_strndup("", 0);
+    int length = strlen(buf);
+    return temp_strndup(buf, length);
+#elif defined(__FreeBSD__)
+    char buf[4096];
+    int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
+    size_t length = sizeof(buf);
+    if(sysctl(mib, 4, buf, &length, NULL, 0) < 0) return temp_strndup("", 0);
+    return temp_strndup(buf, length);
+#elif defined(__HAIKU__)
+    int cookie = 0;
+    image_info info;
+    while(get_next_image_info(B_CURRENT_TEAM, &cookie, &info) == B_OK) {
+        if(info.type == B_APP_IMAGE) break;
+    }
+    return temp_strdup(info.name);
+#else
+    fprintf(stderr, LOC_STR": TODO: %s is not implemented for this platform\n", __FUNCTION__);
+    return temp_strndup("", 0);
+#endif
+}
+
+VLIBPROC void VL_cc_Opt(struct compiler_info_opts opt)
+{
+    switch(opt.cc) {
+        case CCompiler_GCC: {
+            CmdAppend(opt.cmd, "cc");
+        } break;
+        case CCompiler_Clang: {
+            CmdAppend(opt.cmd, "clang");
+        } break;
+        case CCompiler_MSVC: {
+            CmdAppend(opt.cmd, "cl.exe");
+        } break;
+        case CCompiler_TCC: {
+            CmdAppend(opt.cmd, "tcc");
+        } break;
+    }
+}
+
+VLIBPROC void VL_ccWarnings_Opt(struct compiler_info_opts opt)
+{
+    switch(opt.cc) {
+        case CCompiler_GCC:
+        case CCompiler_TCC:
+        case CCompiler_Clang: {
+            CmdAppend(opt.cmd, "-Wall", "-Wextra");
+        } break;
+        case CCompiler_MSVC: {
+            CmdAppend(opt.cmd, "-W4", "-nologo", "-D_CRT_SECURE_NO_WARNINGS");
+        } break;
+    }
+}
+
+VLIBPROC void VL_ccWarningsAsErrors_Opt(struct compiler_info_opts opt)
+{
+    switch(opt.cc) {
+        case CCompiler_GCC:
+        case CCompiler_TCC:
+        case CCompiler_Clang: {
+            CmdAppend(opt.cmd, "-Werror");
+        } break;
+        case CCompiler_MSVC: {
+            CmdAppend(opt.cmd, "-WX");
+        } break;
+    }
+}
+
+VLIBPROC void VL_ccOutput_Opt(struct compiler_info_opts opt, const char *output)
+{
+    Assert(output);
+    switch(opt.cc) {
+        case CCompiler_GCC:
+        case CCompiler_TCC:
+        case CCompiler_Clang: {
+            CmdAppend(opt.cmd, "-o", output);
+        } break;
+        case CCompiler_MSVC: {
+            CmdAppend(opt.cmd, temp_sprintf("/Fe:%s", output));
+        } break;
+    }
+}
+
+VLIBPROC void VL_ccDebug_Opt(struct compiler_info_opts opt)
+{
+    switch(opt.cc) {
+        case CCompiler_GCC:
+        case CCompiler_TCC:
+        case CCompiler_Clang: {
+            CmdAppend(opt.cmd, "-g");
+        } break;
+        case CCompiler_MSVC: {
+            CmdAppend(opt.cmd, "-Zi");
+        } break;
+    }
+}
+
+VLIBPROC void VL_ccLib_Opt(struct compiler_info_opts opt, const char *lib)
+{
+#if OS_WINDOWS
+    if(opt.cc == CCompiler_MSVC && !opt.cmd->msvc_linkflags) {
+        CmdAppend(opt.cmd, "/link");
+        opt.cmd->msvc_linkflags = true;
+    }
+#endif
+
+    switch(opt.cc) {
+        case CCompiler_GCC:
+        case CCompiler_TCC:
+        case CCompiler_Clang: {
+            CmdAppend(opt.cmd, "-l", lib);
+        } break;
+        case CCompiler_MSVC: {
+            CmdAppend(opt.cmd, temp_sprintf("%s.lib", lib));
+        } break;
+    }
+}
+
+VLIBPROC void VL_ccIncludepath_Opt(struct compiler_info_opts opt, const char *includepath)
+{
+    CmdAppend(opt.cmd, "-I", includepath);
+}
+
+VLIBPROC void VL_ccLibpath_Opt(struct compiler_info_opts opt, const char *libpath)
+{
+#if OS_WINDOWS
+    if(opt.cc == CCompiler_MSVC && !opt.cmd->msvc_linkflags) {
+        CmdAppend(opt.cmd, "/link");
+        opt.cmd->msvc_linkflags = true;
+    }
+#endif
+
+    switch(opt.cc) {
+        case CCompiler_GCC:
+        case CCompiler_TCC:
+        case CCompiler_Clang: {
+            CmdAppend(opt.cmd, "-L", libpath);
+        } break;
+        case CCompiler_MSVC: {
+            CmdAppend(opt.cmd, temp_sprintf("/libpath:%s", libpath));
+        } break;
+    }
+}
+
+VLIBPROC bool VL_CCompile_Opt(vl_compile_ctx *ctx, vl_cmd_opts opt)
+{
+    struct compiler_info_opts info = {
+        .cmd = opt.cmd,
+        .cc = ctx->cc,
+    };
+
+    if(!ctx->outputDir) {
+        ctx->outputDir = ".";
+    }
+    const char *output = VL_GetFilePathFromCompileCtx(ctx);
+    VL_cc_Opt(info);
+
+    // compile only, don't link
+    if((ctx->type == Compile_StaticLibrary) ||
+       (ctx->type == Compile_Object))
+    {
+        CmdAppend(opt.cmd, "-c");
+    }
+
+    DaAppendMany(opt.cmd, ctx->sourceFiles.items, ctx->sourceFiles.count);
+    /* If compiling for an object, output file path is autoassigned by compiler unless specified */
+    if(output) {
+        if(((ctx->type == Compile_Object) || (ctx->type == Compile_StaticLibrary)) && (ctx->cc == CCompiler_MSVC))
+        {
+            CmdAppend(opt.cmd, temp_sprintf("-Fo:%s", output));
+        } else {
+            VL_ccOutput_Opt(info, output);
+        }
+    }
+
+    if(ctx->optimize == Optimize_Speed) {
+        if(ctx->cc == CCompiler_MSVC) {
+            CmdAppend(opt.cmd, "-O2");
+        } else if((ctx->cc == CCompiler_GCC) || (ctx->cc == CCompiler_Clang)) {
+            CmdAppend(opt.cmd, "-O3");
+        }
+    } else if(ctx->optimize == Optimize_Size) {
+        if(ctx->cc != CCompiler_TCC) {
+            CmdAppend(opt.cmd, "-Os");
+        }
+    }
+
+    if(ctx->debug) VL_ccDebug_Opt(info);
+    if(ctx->warnings) VL_ccWarnings_Opt(info);
+    if(ctx->warningsAsErrors) VL_ccWarningsAsErrors_Opt(info);
+    for(size_t i = 0; i < ctx->includePaths.count; i++) {
+        VL_ccIncludepath_Opt(info, ctx->includePaths.items[i]);
+    }
+
+    /* extra compiler flags */
+    DaAppendMany(opt.cmd, ctx->extraCompilerFlags.items, ctx->extraCompilerFlags.count);
+    if(ctx->cc == CCompiler_MSVC) {
+        DaAppendMany(opt.cmd, ctx->extraMsvcFlags.items, ctx->extraMsvcFlags.count);
+    } else {
+        DaAppendMany(opt.cmd, ctx->extraGccClangFlags.items, ctx->extraGccClangFlags.count);
+        if(ctx->cc == CCompiler_GCC) {
+            DaAppendMany(opt.cmd, ctx->extraGccFlags.items, ctx->extraGccFlags.count);
+        } else if(ctx->cc == CCompiler_Clang) {
+            DaAppendMany(opt.cmd, ctx->extraClangFlags.items, ctx->extraClangFlags.count);
+        }
+    }
+
+    /* after "/link" in msvc */
+    for(size_t i = 0; i < ctx->libPaths.count; i++) {
+        VL_ccLibpath_Opt(info, ctx->libPaths.items[i]);
+    }
+
+    for(size_t i = 0; i < ctx->libs.count; i++) {
+        VL_ccLib_Opt(info, ctx->libs.items[i]);
+    }
+
+#if OS_WINDOWS
+    if((ctx->cc == CCompiler_MSVC) && !opt.cmd->msvc_linkflags) {
+        CmdAppend(opt.cmd, "/link");
+        opt.cmd->msvc_linkflags = true;
+    }
+#endif
+
+    if(ctx->type == Compile_DynamicLibrary) {
+        if(ctx->cc == CCompiler_MSVC) {
+            CmdAppend(opt.cmd, "/DLL");
+        } else {
+            CmdAppend(opt.cmd, "-shared");
+        }
+    }
+
+    if(!ctx->incremental && (ctx->cc == CCompiler_MSVC)) {
+        CmdAppend(opt.cmd, "-incremental:no");
+    }
+    if(ctx->gcSections) {
+        if(ctx->cc == CCompiler_MSVC) {
+            CmdAppend(opt.cmd, "-opt:ref");
+        } else {
+            CmdAppend(opt.cmd, "-Wl,--gc-sections");
+        }
+    }
+
+    bool ok = CmdRun_Opt(opt);
+
+    if(ok && ctx->type == Compile_StaticLibrary) {
+        if(ctx->cc == CCompiler_MSVC) {
+            CmdAppend(opt.cmd, "lib", "-nologo", output);
+        } else {
+            CmdAppend(opt.cmd, "ar", "rcs",
+                temp_sprintf("%s/lib%s.a", ctx->outputDir, ctx->output), output);
+        }
+
+        if(opt.async) {
+            VL_ProcWait(opt.async->items[opt.async->count - 1]);
+        }
+        ok = CmdRun_Opt(opt);
+    }
+
+    return ok;
+}
+
+bool Install_SDL3(vl_cmd *cmd, vl_install_info *info)
+{
+    bool result = true;
+
+    const char *modeStr;
+    const char *directoryOut;
+    const char *cmakeOutDir;
+    const char *cmakeGenerator;
+    const char *sdlLibName;
+#if OS_WINDOWS
+    const char *sdlDllName = "SDL3.dll";
+#else
+    (void)sdlLibName; (void)cmakeOutDir;
+    const char *sdlDllName = "libSDL3" VL_DLL_EXTENSION;
+#endif
+
+    if(info->cc == CCompiler_MSVC) {
+        directoryOut = "SDL-build-msvc";
+        cmakeGenerator = VL_CMAKE_MSVC_GENERATOR;
+        sdlLibName = "SDL3.lib";
+    } else if(info->cc == CCompiler_GCC) {
+        directoryOut = "SDL-build-gcc";
+        cmakeGenerator = VL_CMAKE_GCC_GENERATOR;
+        sdlLibName = "libSDL3.dll.a";
+    } else if(info->cc == CCompiler_Clang) {
+        directoryOut = "SDL-build-clang";
+        cmakeGenerator = VL_CMAKE_CLANG_GENERATOR;
+        sdlLibName = "libSDL3.dll.a";
+    } else {
+        VL_Log(VL_ERROR, "Unsupported compiler.\n"
+                         "Supported compilers: [CCompiler_MSVC, CCompiler_GCC, CCompiler_Clang]");
+        return false;
+    }
+
+    if(info->mode == VL_INSTALL_MODE_RELEASE) {
+        modeStr = "Release";
+    } else if(info->mode == VL_INSTALL_MODE_RELEASE_WITH_DEBUG) {
+        modeStr = "RelWithDebInfo";
+    } else if(info->mode == VL_INSTALL_MODE_DEBUG) {
+        modeStr = "Debug";
+    } else {
+        VL_Log(VL_ERROR, "Unknown install mode\n"
+                         "supported modes are: [VL_INSTALL_MODE_RELEASE, VL_INSTALL_MODE_RELEASE_WITH_DEBUG, VL_INSTALL_MODE_DEBUG]");
+        return false;
+    }
+
+    uint64_t tempMark = temp_save();
+#if OS_WINDOWS
+    bool skipped = VL_FileExists("dynamic_libs/SDL3.dll");
+#else
+    bool skipped = VL_FileExists("dynamic_libs/libSDL3.so");
+#endif
+    if(skipped) {
+        goto get_info;
+    }
+
+    MkdirIfNotExist("vendor");
+    VL_SetCurrentDir("vendor");
+
+    if(!VL_FileExists("SDL")) {
+        const char *clone_url = "https://github.com/libsdl-org/SDL.git";
+        CmdAppend(cmd, "git", "clone", clone_url, "--single-branch", "--depth=1");
+        if(!CmdRun(cmd)) {
+            VL_Log(VL_ERROR, "Could not clone SDL repo");
+            VL_ReturnDefer(false);
+        }
+    }
+
+    CmdAppend(cmd, "cmake", "-S", "SDL", "-B", directoryOut, "-G", cmakeGenerator);
+    if(info->cc == CCompiler_GCC) {
+        CmdAppend(cmd, "-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++");
+    } else if(info->cc == CCompiler_Clang) {
+        CmdAppend(cmd, "-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++");
+    }
+    if(!CmdRun(cmd)) {
+        VL_Log(VL_ERROR, "Could not configure build");
+        VL_ReturnDefer(false);
+    }
+
+    CmdAppend(cmd, "cmake", "--build", directoryOut, "--config", modeStr);
+    if(!CmdRun(cmd)) {
+        VL_Log(VL_ERROR, "Could not build SDL");
+        VL_ReturnDefer(false);
+    }
+
+    if(info->installDir) {
+        CmdAppend(cmd, "cmake", "--install", directoryOut, "--config", modeStr, "--prefix", info->installDir);
+        if(!CmdRun(cmd)) {
+            VL_Log(VL_ERROR, "Could not intall SDL in '%s' directory", info->installDir);
+            VL_ReturnDefer(false);
+        }
+    }
+
+    if(!VL_FileExists("../include/SDL3")) {
+        MkdirIfNotExist("../include");
+        if(!VL_CopyDirectoryRecursively("SDL/include/SDL3", "../include/SDL3")) {
+            VL_Log(VL_ERROR, "Could not copy SDL3 include directory");
+            VL_ReturnDefer(false);
+        }
+    }
+
+    cmakeOutDir = temp_sprintf("%s/%s", directoryOut, modeStr);
+    const char *newDllPath = temp_sprintf("../dynamic_libs/%s", sdlDllName);
+    if(!VL_FileExists(newDllPath)) {
+#if OS_WINDOWS
+        if(info->cc == CCompiler_MSVC) {
+            
+            if(!VL_CopyDirectoryRecursively(cmakeOutDir, "../dynamic_libs", VL_DLL_EXTENSION)) {
+                VL_Log(VL_ERROR, "Could not copy SDL3 dlls");
+                VL_ReturnDefer(false);
+            }
+            if(info->mode != VL_INSTALL_MODE_RELEASE) {
+                if(!VL_CopyDirectoryRecursively(cmakeOutDir, "../dynamic_libs", ".pdb")) {
+                    VL_Log(VL_ERROR, "Could not copy SDL3 pdbs");
+                    VL_ReturnDefer(false);
+                }
+            }
+        } else {
+            if(!VL_CopyFile(temp_sprintf("%s/%s", directoryOut, sdlDllName), newDllPath)) {
+                VL_Log(VL_ERROR, "Could not copy SDL3 dll");
+                VL_ReturnDefer(false);
+            }
+        }
+#else
+        char buf[2048];
+        char *realPath = realpath(temp_sprintf("%s/%s", directoryOut, sdlDllName), buf);
+        if(!realPath) {
+            VL_Log(VL_ERROR, "Could not get real path from SDL" VL_DLL_EXTENSION " symlink");
+            VL_ReturnDefer(false);
+        }
+
+        MkdirIfNotExist("../dynamic_libs");
+        MkdirIfNotExist("../lib");
+
+        const char *unversionedLib = temp_sprintf("../lib/%s", sdlDllName);
+        const char *unversionedDll = newDllPath;
+
+        const char *versionedLib = temp_sprintf("../lib/%s.0", sdlDllName);
+        const char *versionedDll = temp_sprintf("../dynamic_libs/%s.0", sdlDllName);
+
+        if((symlink(realPath, unversionedLib) == -1) ||
+           (symlink(realPath, unversionedDll) == -1) ||
+           (symlink(realPath, versionedLib) == -1) ||
+           (symlink(realPath, versionedDll) == -1))
+        {
+            VL_Log(VL_ERROR, "Could not create symlink to SDL3" VL_DLL_EXTENSION ": %s", strerror(errno));
+            VL_ReturnDefer(false);
+        }
+#endif
+    }
+
+#if OS_WINDOWS
+    const char *sdlLibNewPath = temp_sprintf("../lib/%s", sdlLibName);
+    if(!VL_FileExists(sdlLibNewPath)) {
+        MkdirIfNotExist("../lib");
+        const char *oldPath;
+        if(info->cc == CCompiler_MSVC) {
+            oldPath = temp_sprintf("%s/%s", cmakeOutDir, sdlLibName);
+        } else {
+            oldPath = temp_sprintf("%s/%s", directoryOut, sdlLibName);
+        }
+        if(!VL_CopyFile(oldPath, sdlLibNewPath)) {
+            VL_Log(VL_ERROR, "Could not copy %s", sdlLibName);
+            VL_ReturnDefer(false);
+        }
+    }
+#endif
+
+get_info:
+    info->libs.items = 0;
+    info->libs.count = 0;
+    info->libs.capacity = 0;
+    info->extraCompilerFlags.items = 0;
+    info->extraCompilerFlags.count = 0;
+    info->extraCompilerFlags.capacity = 0;
+#if OS_WINDOWS
+    // NOTE: SDL3.lib or libSDL3.dll.a
+    DaAppend(&info->libs, (info->cc == CCompiler_MSVC) ? "SDL3" : "SDL3.dll");
+#else
+    DaAppend(&info->libs, "SDL3");
+    DaAppend(&info->extraCompilerFlags, "-Wl,-rpath,$ORIGIN/lib");
+#endif
+    if(skipped) return true;
+
+defer:
+    temp_rewind(tempMark);
+    VL_SetCurrentDir("..");
+    return result;
+}
+
+#if OS_WINDOWS
+static void Win32_CmdQuote(vl_cmd cmd, string_builder *quoted)
+{
+    for(size_t i = 0; i < cmd.count; ++i) {
+        const char *arg = cmd.items[i];
+        if(arg == NULL) break;
+        size_t len = strlen(arg);
+        if(i > 0) DaAppend(quoted, ' ');
+        if(len != 0 && NULL == strpbrk(arg, " \t\n\v\"")) {
+            // no need to quote
+            DaAppendMany(quoted, arg, len);
+        } else {
+            // we need to escape:
+            // 1. double quotes in the original arg
+            // 2. consequent backslashes before a double quote
+            size_t backslashes = 0;
+            DaAppend(quoted, '\"');
+            for(size_t j = 0; j < len; ++j) {
+                char x = arg[j];
+                if(x == '\\') {
+                    backslashes += 1;
+                } else {
+                    if(x == '\"') {
+                        // escape backslashes (if any) and the double quote
+                        for(size_t k = 0; k < 1+backslashes; ++k) {
+                            DaAppend(quoted, '\\');
+                        }
+                    }
+                    backslashes = 0;
+                }
+                DaAppend(quoted, x);
+            }
+            // escape backslashes (if any)
+            for(size_t k = 0; k < backslashes; ++k) {
+                DaAppend(quoted, '\\');
+            }
+            DaAppend(quoted, '\"');
+        }
+    }
+}
+#endif
+
+VLIBPROC vl_proc VL_CmdStartProcess(vl_cmd cmd, vl_fd *fdin, vl_fd *fdout, vl_fd *fderr, bool render)
+{
+    if(cmd.count < 1) {
+        VL_Log(VL_ERROR, "Could not run empty command");
+        return VL_INVALID_PROC;
+    }
+#if OS_WINDOWS
+    cmd.msvc_linkflags = false;
+#endif
+
+    string_builder sb = {0};
+    if(render) {
+        VL_CmdRender(cmd, &sb);
+        SbAppendNull(&sb);
+        VL_Log(VL_INFO, "CMD: %s", sb.items);
+        SbFree(sb);
+        memset(&sb, 0, sizeof(sb));
+    }
+
+#if OS_WINDOWS
+    // https://docs.microsoft.com/en-us/windows/win32/procthread/creating-a-child-process-with-redirected-input-and-output
+
+    STARTUPINFO siStartInfo;
+    ZeroMemory(&siStartInfo, sizeof(siStartInfo));
+    siStartInfo.cb = sizeof(STARTUPINFO);
+    // NOTE: theoretically setting NULL to std handles should not be a problem
+    // https://docs.microsoft.com/en-us/windows/console/getstdhandle?redirectedfrom=MSDN#attachdetach-behavior
+    // TODO: check for errors in GetStdHandle
+    siStartInfo.hStdError = fderr ? *fderr : GetStdHandle(STD_ERROR_HANDLE);
+    siStartInfo.hStdOutput = fdout ? *fdout : GetStdHandle(STD_OUTPUT_HANDLE);
+    siStartInfo.hStdInput = fdin ? *fdin : GetStdHandle(STD_INPUT_HANDLE);
+    siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+
+    PROCESS_INFORMATION piProcInfo;
+    ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
+
+    Win32_CmdQuote(cmd, &sb);
+    SbAppendNull(&sb);
+    BOOL bSuccess = CreateProcessA(NULL, sb.items, NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo);
+    SbFree(sb);
+
+    if(!bSuccess) {
+        VL_Log(VL_ERROR, "Could not create child process for %s: %s", cmd.items[0], Win32_ErrorMessage(GetLastError()));
+        return VL_INVALID_PROC;
+    }
+
+    CloseHandle(piProcInfo.hThread);
+
+    return piProcInfo.hProcess;
+#else
+    pid_t cpid = fork();
+    if(cpid < 0) {
+        VL_Log(VL_ERROR, "Could not fork child process: %s", strerror(errno));
+        return VL_INVALID_PROC;
+    }
+
+    if(cpid == 0) {
+        if(fdin) {
+            if(dup2(*fdin, STDIN_FILENO) < 0) {
+                VL_Log(VL_ERROR, "Could not setup stdin for child process: %s", strerror(errno));
+                exit(1);
+            }
+        }
+
+        if(fdout) {
+            if(dup2(*fdout, STDOUT_FILENO) < 0) {
+                VL_Log(VL_ERROR, "Could not setup stdout for child process: %s", strerror(errno));
+                exit(1);
+            }
+        }
+
+        if(fderr) {
+            if(dup2(*fderr, STDERR_FILENO) < 0) {
+                VL_Log(VL_ERROR, "Could not setup stderr for child process: %s", strerror(errno));
+                exit(1);
+            }
+        }
+
+        // NOTE: This leaks a bit of memory in the child process.
+        // But do we actually care? It's a one off leak anyway...
+        vl_cmd cmdNull = {0};
+        DaAppendMany(&cmdNull, cmd.items, cmd.count);
+        CmdAppend(&cmdNull, NULL);
+
+        if(execvp(cmd.items[0], (char * const*) cmdNull.items) < 0) {
+            VL_Log(VL_ERROR, "Could not exec child process for %s: %s", cmd.items[0], strerror(errno));
+            exit(1);
+        }
+        Assert(!"unreachable");
+    }
+
+    return cpid;
+#endif
+}
+
+VLIBPROC void VL__GoRebuildUrself(int argc, char **argv, const char **src_paths, size_t path_count)
+{
+    Assert(argc > 0);
+    // We don't want to recompile if a debugger is present, this would cause
+    // the debugger to get confused since it doesn't know that
+    // the new process is the one that it needs to debug
+    if(IsDebuggerPresent()) return;
+
+    const char *bin_path = *argv;
+    argc--;
+    argv++;
+#ifdef _WIN32
+    // On Windows executables almost always invoked without extension, so
+    // it's ./nob, not ./nob.exe. For renaming the extension is a must.
+    if(!ViewEndsWith(ViewFromCstr(bin_path), VIEW_STATIC(".exe"))) {
+        bin_path = temp_sprintf("%s.exe", bin_path);
+    }
+#endif
+
+    int rebuild_is_needed = VL_NeedsRebuild_Impl(bin_path, src_paths, path_count);
+    if(rebuild_is_needed < 0) exit(1);
+    if(!rebuild_is_needed) return;
+
+    vl_cmd cmd = {0};
+
+    const char *old_bin_path = temp_sprintf("%s.old", bin_path);
+
+    if(!VL_Rename(bin_path, old_bin_path)) exit(1);
+    CmdAppend(&cmd, VL_REBUILD_URSELF(bin_path, src_paths[0]));
+    if(!CmdRun(&cmd)) {
+        VL_Rename(old_bin_path, bin_path);
+        exit(1);
+    }
+#ifdef VL_EXPERIMENTAL_DELETE_OLD
+    // NOTE: Must not delete on windows at least
+    VL_DeleteFile(old_binary_path);
+#endif
+
+    CmdAppend(&cmd, bin_path);
+    DaAppendMany(&cmd, argv, argc);
+    if(!CmdRun(&cmd)) exit(1);
+    exit(0);
+}
+
+// minirent.h SOURCE BEGIN ////////////////////////////////////////
+#if defined(_WIN32)
+struct DIR
+{
+    HANDLE hFind;
+    WIN32_FIND_DATA data;
+    struct dirent *dirent;
+};
+
+VLIBPROC DIR *opendir(const char *dirpath)
+{
+    Assert(dirpath);
+
+    char buffer[MAX_PATH];
+    snprintf(buffer, MAX_PATH, "%s\\*", dirpath);
+
+    DIR *dir = (DIR*)VL_REALLOC(NULL, sizeof(DIR));
+    memset(dir, 0, sizeof(DIR));
+
+    dir->hFind = FindFirstFile(buffer, &dir->data);
+    if(dir->hFind == INVALID_HANDLE_VALUE) {
+        // TODO: opendir should set errno accordingly on FindFirstFile fail
+        // https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
+        errno = ENOSYS;
+        goto fail;
+    }
+
+    return dir;
+
+fail:
+    if(dir) {
+        VL_FREE(dir);
+    }
+
+    return NULL;
+}
+
+VLIBPROC struct dirent *readdir(DIR *dirp)
+{
+    Assert(dirp);
+
+    if(dirp->dirent == NULL) {
+        dirp->dirent = (struct dirent*)VL_REALLOC(NULL, sizeof(struct dirent));
+        memset(dirp->dirent, 0, sizeof(struct dirent));
+    } else {
+        if(!FindNextFile(dirp->hFind, &dirp->data)) {
+            if(GetLastError() != ERROR_NO_MORE_FILES) {
+                // TODO: readdir should set errno accordingly on FindNextFile fail
+                // https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
+                errno = ENOSYS;
+            }
+
+            return NULL;
+        }
+    }
+
+    memset(dirp->dirent->d_name, 0, sizeof(dirp->dirent->d_name));
+
+    strncpy(
+        dirp->dirent->d_name,
+        dirp->data.cFileName,
+        sizeof(dirp->dirent->d_name) - 1);
+
+    return dirp->dirent;
+}
+
+VLIBPROC int closedir(DIR *dirp)
+{
+    Assert(dirp);
+
+    if(!FindClose(dirp->hFind)) {
+        // TODO: closedir should set errno accordingly on FindClose fail
+        // https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
+        errno = ENOSYS;
+        return -1;
+    }
+
+    if (dirp->dirent) {
+        VL_FREE(dirp->dirent);
+    }
+    VL_FREE(dirp);
+
+    return 0;
+}
+#endif // _WIN32
+// minirent.h SOURCE END ////////////////////////////////////////
+
+#endif // VL_BUILD_IMPLEMENTATION
+#endif // VL_BUILD_H
