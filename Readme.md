@@ -19,7 +19,7 @@ What does this compiler include?
 [ ] executable generation
 
 ## Building
-1. Build `build.c`:
+1. Build `build.c` (only need to do this once):
 ### windows
 ```
 gcc build.c -o build.exe
