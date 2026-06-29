@@ -4,6 +4,7 @@
 What does this compiler include?
 
 ### frontend
+```
 [x] Unary, Binary Operations
 [x] (some) peephole optimizations
 [ ] variable declarations
@@ -13,10 +14,13 @@ What does this compiler include?
 [ ] function pointers
 [ ] macros
 [ ] comptime
+```
 
 ### backend
+```
 [ ] Obj generation
 [ ] executable generation
+```
 
 ## Building
 1. Build `build.c` (only need to do this once):
