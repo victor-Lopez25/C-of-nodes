@@ -226,7 +226,7 @@ StringViewList Scope_ReverseNames(SON_Node *scope)
 
   for(size_t hmIdx = 0; hmIdx < scope->as.scope.scopes.count; hmIdx++) {
     SymbolHashmap *hm = &scope->as.scope.scopes.items[hmIdx];
-    for(size_t keyIdx = 0; keyIdx < stbds_hmlenu(*hm); keyIdx++) {
+    for(size_t keyIdx = 0; keyIdx < slicehm_lenu(*hm); keyIdx++) {
       SymbolEntry sym = (*hm)[keyIdx];
       list.items[sym.value] = sym.key;
     }
@@ -247,8 +247,9 @@ void Scope_Pop(CompilerContext *ctx, SON_Node *scope)
   Assert(scope->kind == SON_Node_Scope);
 
   SymbolHashmap *hm = &scope->as.scope.scopes.items[scope->as.scope.scopes.count - 1];
-  SON_PopNodes(ctx, scope, stbds_hmlenu(*hm));
-  stbds_hmfree(*hm);
+  SON_PopNodes(ctx, scope, slicehm_lenu(*hm));
+  slicehm_free(*hm);
+  scope->as.scope.scopes.count -= 1;
 }
 
 SON_Node *Scope_Define(CompilerContext *ctx, SON_Node *scope, view name, SON_Node *n)
@@ -256,11 +257,11 @@ SON_Node *Scope_Define(CompilerContext *ctx, SON_Node *scope, view name, SON_Nod
   Assert(scope->kind == SON_Node_Scope);
 
   SymbolHashmap *hm = &scope->as.scope.scopes.items[scope->as.scope.scopes.count - 1];
-  if(stbds_hmgetp_null(*hm, name)) {
+  if(slicehm_getp_null(*hm, name)) {
     // double define
     return 0;
   }
-  stbds_hmput(*hm, name, scope->inputs.count);
+  slicehm_put(*hm, name, scope->inputs.count);
 
   SON_Node *node = SON_AddDef(ctx, scope, n);
   SON_GraphStep(ctx);
@@ -272,7 +273,7 @@ SON_Node *Scope_Lookup(SON_Node *scope, view name)
   for(int i = (int)scope->as.scope.scopes.count - 1; i >= 0; i--) {
     SymbolHashmap *hm = &scope->as.scope.scopes.items[i];
 
-    SymbolEntry *entry = stbds_hmgetp_null(*hm, name);
+    SymbolEntry *entry = slicehm_getp_null(*hm, name);
     if(entry) {
       return scope->inputs.items[entry->value];
     }
@@ -285,7 +286,7 @@ SON_Node *Scope_Update(CompilerContext *ctx, SON_Node *scope, view name, SON_Nod
   for(int i = (int)scope->as.scope.scopes.count - 1; i >= 0; i--) {
     SymbolHashmap *hm = &scope->as.scope.scopes.items[i];
 
-    SymbolEntry *entry = stbds_hmgetp_null(*hm, name);
+    SymbolEntry *entry = slicehm_getp_null(*hm, name);
     if(entry) {
       SON_Node *newNode = SON_SetDef(ctx, scope, entry->value, node);
       SON_GraphStep(ctx);
@@ -602,7 +603,7 @@ void SON_PrintToBuilder(string_builder *sb, SON_Node *node)
       for(size_t hmIdx = 0; hmIdx < node->as.scope.scopes.count; hmIdx++) {
         SymbolHashmap *hm = &node->as.scope.scopes.items[hmIdx];
         SbAppendCstr(sb, "[");
-        for(size_t keyIdx = 0; keyIdx < stbds_hmlenu(hm); keyIdx++) {
+        for(size_t keyIdx = 0; keyIdx < slicehm_lenu(hm); keyIdx++) {
           view name = (*hm)[keyIdx].key;
           if(keyIdx != 0) { SbAppendCstr(sb, ", "); }
           SbAppendBuf(sb, name.items, name.count);

@@ -7,9 +7,9 @@ What does this compiler include?
 ```
 [x] Unary, Binary Operations
 [x] (some) peephole optimizations
-[ ] variable declarations
+[x] variable declarations
+[x] scopes
 [ ] constant definitions
-[ ] scopes
 [ ] functions
 [ ] function pointers
 [ ] macros
@@ -57,3 +57,6 @@ where:
 <binary> ::= <expr> <binary_op> <expr>
 <binary_op> ::= "+" | "-" | "*" | "/"
 ```
+
+## Discussion...
+ - Do I want to disallow shadowing entirely, only by default or only when specified (compiler flag)?

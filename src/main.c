@@ -46,8 +46,9 @@ bool InitCompilerContext(CompilerContext *ctx)
   ctx->defaultValues[SON_Value_String]->value.kind = SON_Value_String;
   ctx->defaultValues[SON_Value_String]->value.as.string = VIEW_STATIC("");
 
-  stbds_hmput(ctx->keywords, VIEW_STATIC("int"), 1);
-  stbds_hmput(ctx->keywords, VIEW_STATIC("return"), 1);
+  // NOTE: I don't care about the value in this hashmap (for now...)
+  slicehm_put(ctx->keywords, VIEW_STATIC("int"), 1);
+  slicehm_put(ctx->keywords, VIEW_STATIC("return"), 1);
 
   return true;
 }
@@ -80,7 +81,7 @@ void DeleteCompilerContext(CompilerContext *ctx)
 
   if(ctx->scope) {
     for(size_t i = 0; i < ctx->scope->as.scope.scopes.count; i++) {
-      stbds_hmfree(ctx->scope->as.scope.scopes.items[i]);
+      slicehm_free(ctx->scope->as.scope.scopes.items[i]);
     }
     DaFree(ctx->scope->as.scope.scopes);
   }
@@ -238,15 +239,62 @@ void testVariableDecl(CompilerContext *ctx)
   string_builder sb = {0};
   SON_PrintToBuilder(&sb, ret);
   VL_Log(VL_INFO, "output: "VIEW_FMT, VIEW_ARG(sb));
+  Assert(ViewEq(VIEW("return #1;"), ViewFromParts(sb.items, sb.count)));
   SbFree(sb);
+}
+
+void testVariableAdd(CompilerContext *ctx)
+{
+  ClearCompilerContext(ctx);
+
+  view data = VIEW("a: int = 1; b: int = 2; return a+b;");
+  ctx->originalSource = data;
+  ctx->currentSource = data;
+
+  SON_Node *ret = Parse_CurrentContext(ctx);
+  string_builder sb = {0};
+  SON_PrintToBuilder(&sb, ret);
+  VL_Log(VL_INFO, "output: "VIEW_FMT, VIEW_ARG(sb));
+  Assert(ViewEq(VIEW("return #3;"), ViewFromParts(sb.items, sb.count)));
+  SbFree(sb);
+}
+
+void testVariableScope(CompilerContext *ctx)
+{
+  ClearCompilerContext(ctx);
+  // DISABLE_PEEPHOLE_OPTIMIZATIONS = true;
+  EnableGraphStepsForTest();
+
+  view data = VIEW(
+    "a: int = 1; b: int = 2; c: int = 0;"
+    "{"
+      "b: int = 3; c = a + b;"
+    "}"
+    "return c;"
+  );
+  ctx->originalSource = data;
+  ctx->currentSource = data;
+
+  SON_Node *ret = Parse_CurrentContext(ctx);
+  string_builder sb = {0};
+  SON_PrintToBuilder(&sb, ret);
+  VL_Log(VL_INFO, "output: "VIEW_FMT, VIEW_ARG(sb));
+  Assert(ViewEq(VIEW("return #4;"), ViewFromParts(sb.items, sb.count)));
+  SbFree(sb);
+
+  GenerateGraphFile(ctx);
+  // DISABLE_PEEPHOLE_OPTIMIZATIONS = false;
+  ENABLE_GRAPH_STEPS = false;
 }
 
 void DoTests(CompilerContext *ctx)
 {
-  // TestParseGrammar(ctx);
-  // TestAddPeephole(ctx);
-  // TestPeepholeExample(ctx);
+  TestParseGrammar(ctx);
+  TestAddPeephole(ctx);
+  TestPeepholeExample(ctx);
   testVariableDecl(ctx);
+  testVariableAdd(ctx);
+  testVariableScope(ctx);
 
   DeleteCompilerContext(ctx);
 }

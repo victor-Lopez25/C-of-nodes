@@ -145,10 +145,11 @@ struct SON_NodeList {
   size_t count;
 };
 
-/* NOTE: This will probably have a different type later,
- *  Also, this is not a type* array, it is a hashmap using stb_ds.h
+/* NOTE: This will probably have a different type for value later,
+ *  Also, this is not a type* array, it is a hashmap using stb_slicehm.h
  */
 typedef struct {
+  /* key _must_ be struct{void *ptr; size_t len; } or something similar */
   view key;
   /* index into node->inputs.items for the scopenode */
   size_t value;

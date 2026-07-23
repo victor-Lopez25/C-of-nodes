@@ -3,17 +3,6 @@
 
 #include "stb_ds.h"
 
-// The macros in this file refer to a structure defined 
-// like the following for the key, value could be any other type
-//#define STB_SLICE struct{ void *STB_SLICE_POINTER_NAME; size_t STB_SLICE_COUNT_NAME; }
-#ifndef STB_SLICE_POINTER_NAME
-# define STB_SLICE_POINTER_NAME items
-#endif
-
-#ifndef STB_SLICE_COUNT_NAME
-# define STB_SLICE_COUNT_NAME count
-#endif
-
 #define slicehm_free_func(a, elemsize) stbds_hmfree_func(a, elemsize)
 extern void *slicehm_get_key(void *a, size_t elemsize, void *data);
 extern void *slicehm_get_key_ts(void *a, size_t elemsize, void *data, ptrdiff_t *temp);
