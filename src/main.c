@@ -1,5 +1,6 @@
 #define VL_BUILD_IMPLEMENTATION
 #define STB_DS_IMPLEMENTATION
+#define STB_SLICEHM_IMPLEMENTATION
 //#include "vl_build.h" (included in common.h)
 #include "common.h"
 #include "time.h" /* time() */

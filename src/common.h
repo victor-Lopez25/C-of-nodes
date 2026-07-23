@@ -7,7 +7,8 @@
 
 #include "raddbg_markup.h"
 #include "vl_build.h"
-#include "stb_ds.h"
+//#include "stb_ds.h" // included in stb_ds_ptr_len_str.h
+#include "stb_slicehm.h"
 
 #define SON_NODE_XAR_CHUNK_COUNT VICLIB_EXP_ARRAY_CHUNK_COUNT
 #define SON_NODE_XAR_CHUNK_SHIFT VICLIB_EXP_ARRAY_CHUNK_SHIFT
