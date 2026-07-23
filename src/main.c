@@ -133,6 +133,8 @@ void PrintUsage(char *program)
 
 bool CompileRawData(CompilerContext *ctx, view data)
 {
+  ClearCompilerContext(ctx);
+
   printf("SOURCE_START_HERE\n"VIEW_FMT"\nSOURCE_END_HERE\n", VIEW_ARG(data));
 
   ctx->originalSource = data;
@@ -148,16 +150,19 @@ bool CompileRawData(CompilerContext *ctx, view data)
 bool CompileFile(CompilerContext *ctx, char *filename)
 {
   size_t fileSize;
-  char *data = ReadEntireFile(ctx->arena, filename, &fileSize);
+  memory_arena arena = {0};
+  ArenaInit(&arena, 1024*1024, malloc(1024*1024));
+  char *data = ReadEntireFile(&arena, filename, &fileSize);
 
   view filedata = ViewFromParts(data, fileSize);
-  if(CompileRawData(ctx, filedata)) {
+  bool ok = CompileRawData(ctx, filedata);
+  if(ok) {
     VL_Log(VL_INFO, "Compiled %s successfully", filename);
   } else {
     VL_Log(VL_ERROR, "Could not compile %s", filename);
-    return false;
   }
-  return true;
+  free(arena.base);
+  return ok;
 }
 
 void TestParseGrammar(CompilerContext *ctx)
@@ -266,7 +271,7 @@ void testVariableScope(CompilerContext *ctx)
   EnableGraphStepsForTest();
 
   view data = VIEW(
-    "a: int = 1; b: int = 2; c: int = 0;"
+    "a := 1; b := 2; c := 0;"
     "{"
       "b: int = 3; c = a + b;"
     "}"
@@ -295,6 +300,7 @@ void DoTests(CompilerContext *ctx)
   testVariableDecl(ctx);
   testVariableAdd(ctx);
   testVariableScope(ctx);
+
 
   DeleteCompilerContext(ctx);
 }
