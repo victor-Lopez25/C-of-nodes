@@ -402,8 +402,7 @@ const char *OperationKindToString(OperationKind op)
 
 bool SON_ValueIsConstant(SON_Value val)
 {
-  return ((val.kind > SON_Value_StartCanBeConstant) && 
-          (val.kind < SON_Value_EndCanBeConstant) && val.isConstant);
+  return val.isConstant;
 }
 
 // NOTE: In SeaOfNodes/Simple this is called 'isCFG()'
