@@ -287,7 +287,7 @@ void testVariableScope(CompilerContext *ctx)
   Assert(ViewEq(VIEW("return #4;"), ViewFromParts(sb.items, sb.count)));
   SbFree(sb);
 
-  GenerateGraphFile(ctx);
+  // GenerateGraphFile(ctx);
   // DISABLE_PEEPHOLE_OPTIMIZATIONS = false;
   ENABLE_GRAPH_STEPS = false;
 }

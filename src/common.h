@@ -125,8 +125,9 @@ typedef enum {
   SON_Value_String = 5,
   SON_Value_Integer = 6,
   SON_Value_Floating = 7,
+  SON_Value_Boolean = 8,
 
-  SON_Value_EndCanBeConstant = 8,
+  SON_Value_EndCanBeConstant = 9,
 } SON_ValueKind;
 
 typedef struct {
@@ -136,6 +137,7 @@ typedef struct {
     view string;
     int64_t integer;
     double floating;
+    bool boolean;
   } as;
 } SON_Value;
 
@@ -163,12 +165,26 @@ typedef enum {
   Operation_Plus,
   /* unary plus '-' expr */
   Operation_Minus,
+  /* unary not '!' expr */
+  Operation_Not,
 
   // binary
+  /* binary add '+' expr */
   Operation_Add, /* order does not matter */
+  /* binary mul '*' expr */
   Operation_Mul, /* order does not matter */
+  /* binary sub '-' expr */
   Operation_Sub, /* order matters */
+  /* binary div '/' expr */
   Operation_Div, /* order matters */
+  /* binary less than '<' expr */
+  Operation_Less,
+  /* binary less than or equal '<=' expr */
+  Operation_LessEq,
+  /* binary greater than '>' expr */
+  Operation_Greater,
+  /* binary greater than or equal '>=' expr */
+  Operation_GreaterEq,
 } OperationKind;
 
 typedef struct {

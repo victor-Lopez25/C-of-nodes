@@ -72,6 +72,7 @@ void SON_PopNodes(CompilerContext *ctx, SON_Node *node, size_t n);
 
 /* printing */
 
+const char *SON_ValueKindToString(SON_ValueKind kind);
 const char *OperationKindToString(OperationKind op);
 const char *SON_NodeKindToString(SON_Node *node);
 const char *SON_NodeLabel(SON_Node *node);

@@ -94,6 +94,15 @@ SON_Node *SON_AllocConstant(CompilerContext *ctx, SON_Value value)
   return node;
 }
 
+/* This will get more complicated, some implicit conversions, etc. */
+static bool AreTypesComparable(SON_ValueKind type1, SON_ValueKind type2)
+{
+  if((type1 == SON_Value_Unassigned) || (type2 == SON_Value_Unassigned)) {
+    return false;
+  }
+  return type1 == type2;
+}
+
 /* unary operations */
 
 SON_Node *SON_AllocPlus(CompilerContext *ctx, SON_Node *in)
@@ -115,6 +124,20 @@ SON_Node *SON_AllocMinus(CompilerContext *ctx, SON_Node *in)
   node->as.unary.op = Operation_Minus;
   SON_GraphStep(ctx);
   return node;
+}
+
+SON_Node *SON_AllocNot(CompilerContext *ctx, SON_Node *in)
+{
+  if(AreTypesComparable(in->value.kind, SON_Value_Boolean)) {
+    SON_Node *node = SON_AllocNext(ctx, SON_Node_UnaryOperation, in);
+    node->as.unary.op = Operation_Not;
+    node->value.kind = SON_Value_Boolean;
+    SON_GraphStep(ctx);
+    return node;
+  } else {
+    VL_Log(VL_ERROR, "Incompatible types '%s' and '%s'", SON_ValueKindToString(in->value.kind), SON_ValueKindToString(SON_Value_Boolean));
+    return &ctx->sentinelNode;
+  }
 }
 
 /* binary operations */
@@ -153,6 +176,62 @@ SON_Node *SON_AllocDiv(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs)
   node->as.binary.orderMatters = true;
   SON_GraphStep(ctx);
   return node;
+}
+
+SON_Node *SON_AllocLess(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs)
+{
+  if(AreTypesComparable(lhs->value.kind, rhs->value.kind)) {
+    SON_Node *node = SON_AllocNext(ctx, SON_Node_BinaryOperation, lhs, rhs);
+    node->as.unary.op = Operation_Less;
+    node->value.kind = SON_Value_Boolean;
+    SON_GraphStep(ctx);
+    return node;
+  } else {
+    VL_Log(VL_ERROR, "Incompatible types '%s' and '%s'", SON_ValueKindToString(lhs->value.kind), SON_ValueKindToString(rhs->value.kind));
+    return &ctx->sentinelNode;
+  }
+}
+
+SON_Node *SON_AllocLessEq(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs)
+{
+  if(AreTypesComparable(lhs->value.kind, rhs->value.kind)) {
+    SON_Node *node = SON_AllocNext(ctx, SON_Node_BinaryOperation, lhs, rhs);
+    node->as.unary.op = Operation_LessEq;
+    node->value.kind = SON_Value_Boolean;
+    SON_GraphStep(ctx);
+    return node;
+  } else {
+    VL_Log(VL_ERROR, "Incompatible types '%s' and '%s'", SON_ValueKindToString(lhs->value.kind), SON_ValueKindToString(rhs->value.kind));
+    return &ctx->sentinelNode;
+  }
+}
+
+SON_Node *SON_AllocGreater(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs)
+{
+  if(AreTypesComparable(lhs->value.kind, rhs->value.kind)) {
+    SON_Node *node = SON_AllocNext(ctx, SON_Node_BinaryOperation, lhs, rhs);
+    node->as.unary.op = Operation_Greater;
+    node->value.kind = SON_Value_Boolean;
+    SON_GraphStep(ctx);
+    return node;
+  } else {
+    VL_Log(VL_ERROR, "Incompatible types '%s' and '%s'", SON_ValueKindToString(lhs->value.kind), SON_ValueKindToString(rhs->value.kind));
+    return &ctx->sentinelNode;
+  }
+}
+
+SON_Node *SON_AllocGreaterEq(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs)
+{
+  if(AreTypesComparable(lhs->value.kind, rhs->value.kind)) {
+    SON_Node *node = SON_AllocNext(ctx, SON_Node_BinaryOperation, lhs, rhs);
+    node->as.unary.op = Operation_GreaterEq;
+    node->value.kind = SON_Value_Boolean;
+    SON_GraphStep(ctx);
+    return node;
+  } else {
+    VL_Log(VL_ERROR, "Incompatible types '%s' and '%s'", SON_ValueKindToString(lhs->value.kind), SON_ValueKindToString(rhs->value.kind));
+    return &ctx->sentinelNode;
+  }
 }
 
 /* other nodes */
@@ -240,6 +319,7 @@ void Scope_Push(CompilerContext *ctx, SON_Node *scope)
   (void)ctx;
   Assert(scope->kind == SON_Node_Scope);
   DaAppend(&scope->as.scope.scopes, (SymbolHashmap)0);
+  SON_GraphStep(ctx);
 }
 
 void Scope_Pop(CompilerContext *ctx, SON_Node *scope)
@@ -250,6 +330,7 @@ void Scope_Pop(CompilerContext *ctx, SON_Node *scope)
   SON_PopNodes(ctx, scope, slicehm_lenu(*hm));
   slicehm_free(*hm);
   scope->as.scope.scopes.count -= 1;
+  SON_GraphStep(ctx);
 }
 
 SON_Node *Scope_Define(CompilerContext *ctx, SON_Node *scope, view name, SON_Node *n)
@@ -302,12 +383,17 @@ const char *OperationKindToString(OperationKind op)
     /* unary */
     case Operation_Plus: return "+";
     case Operation_Minus: return "-";
+    case Operation_Not: return "!";
 
     /* binary */
     case Operation_Add: return "+";
     case Operation_Mul: return "*";
     case Operation_Sub: return "-";
-    case Operation_Div: return "//";
+    case Operation_Div: return "/";
+    case Operation_Less: return "<";
+    case Operation_LessEq: return "<=";
+    case Operation_Greater: return ">";
+    case Operation_GreaterEq: return ">=";
   }
   return "";
 }
@@ -415,6 +501,26 @@ void SON_PopNodes(CompilerContext *ctx, SON_Node *node, size_t n)
   }
 }
 
+/* printing */
+
+const char *SON_ValueKindToString(SON_ValueKind kind)
+{
+  switch(kind) {
+    case SON_Value_Unassigned: return "unassigned";
+    case SON_Value_StartCanBeConstant: return "unassigned";
+    case SON_Value_EndCanBeConstant: return "unassigned";
+    case SON_Value_Bottom: return "Bottom";
+    case SON_Value_Top: return "Top";
+    case SON_Value_Simple: return "simple";
+
+    case SON_Value_String: return "string";
+    case SON_Value_Integer: return "integer";
+    case SON_Value_Floating: return "floating";
+    case SON_Value_Boolean: return "boolean";
+  }
+  return "unassigned";
+}
+
 /* Get a string representation of the node kind */
 const char *SON_NodeKindToString(SON_Node *node)
 {
@@ -467,6 +573,7 @@ const char *SON_NodeLabel(SON_Node *node)
       switch(node->as.unary.op) {
         case Operation_Plus: return "Plus";
         case Operation_Minus: return "Minus";
+        case Operation_Not: return "Not";
       }
     } break;
 
@@ -476,6 +583,10 @@ const char *SON_NodeLabel(SON_Node *node)
         case Operation_Sub: return "Sub";
         case Operation_Mul: return "Mul";
         case Operation_Div: return "Div";
+        case Operation_Less: return "Less";
+        case Operation_LessEq: return "LessEq";
+        case Operation_Greater: return "Greater";
+        case Operation_GreaterEq: return "GreaterEq";
       }
     } break;
 
@@ -525,6 +636,7 @@ const char *SON_NodeUniqueName(SON_Node *node)
       switch(node->as.unary.op) {
         case Operation_Plus: return temp_sprintf("Plus"U64_Fmt, node->nodeID);
         case Operation_Minus: return temp_sprintf("Minus"U64_Fmt, node->nodeID);
+        case Operation_Not: return temp_sprintf("Not"U64_Fmt, node->nodeID);
       }
     } break;
 
@@ -534,6 +646,10 @@ const char *SON_NodeUniqueName(SON_Node *node)
         case Operation_Sub: return temp_sprintf("Sub"U64_Fmt, node->nodeID);
         case Operation_Mul: return temp_sprintf("Mul"U64_Fmt, node->nodeID);
         case Operation_Div: return temp_sprintf("Div"U64_Fmt, node->nodeID);
+        case Operation_Less: return temp_sprintf("Less"U64_Fmt, node->nodeID);
+        case Operation_LessEq: return temp_sprintf("LessEq"U64_Fmt, node->nodeID);
+        case Operation_Greater: return temp_sprintf("Greater"U64_Fmt, node->nodeID);
+        case Operation_GreaterEq: return temp_sprintf("GreaterEq"U64_Fmt, node->nodeID);
       }
     } break;
 
