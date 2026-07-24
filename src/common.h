@@ -107,7 +107,6 @@ typedef enum {
   SON_Node_Scope,
 } SON_NodeKind;
 
-// TODO: This enum can definitely be simplified
 typedef enum {
   SON_Value_Unassigned = 0,
 
