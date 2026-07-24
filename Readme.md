@@ -81,3 +81,10 @@ where:
 
 ## Discussion...
  - Do I want to disallow shadowing entirely, only by default or only when specified (compiler flag)?
+
+## Licenses
+ - `raddbg_markup.h`, used for debugging is licensed under MIT (as it says in the start of the file) by Epic Games Tools
+ - `stb_ds.h`, used for data structures (mainly hashmap) is licensed under the MIT license or the unlicense
+ - `stb_slicehm.h`, an extension of `stb_ds.h` used for hashmaps is licensed under the MIT license or the unlicense
+
+The license for this compiler is TBD, but it will likely be some open source license
