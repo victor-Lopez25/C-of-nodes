@@ -110,14 +110,14 @@ typedef enum {
 typedef enum {
   SON_Value_Unassigned = 0,
 
-  SON_Value_StartCanBeConstant = 4,
+  SON_Value_StartCanBeConstant = 1,
 
-  SON_Value_String = 5,
-  SON_Value_Integer = 6,
-  SON_Value_Floating = 7,
-  SON_Value_Boolean = 8,
+  SON_Value_String = 2,
+  SON_Value_Integer = 3,
+  SON_Value_Floating = 4,
+  SON_Value_Boolean = 5,
 
-  SON_Value_EndCanBeConstant = 9,
+  SON_Value_EndCanBeConstant = 6,
 } SON_ValueKind;
 
 typedef struct {
