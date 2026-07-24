@@ -803,6 +803,13 @@ SON_Value SON_Compute(SON_Node *node)
               .as.integer = -expr->value.as.integer,
             };
           }
+          case Operation_Not: {
+            return (SON_Value){
+              .kind = SON_Value_Boolean,
+              .isConstant = true,
+              .as.boolean = !expr->value.as.boolean,
+            };
+          }
         }
       }
       return (SON_Value){
@@ -815,20 +822,25 @@ SON_Value SON_Compute(SON_Node *node)
       SON_Node *rhs = SON_BinaryRhs(node);
       if(SON_ValueIsConstant(lhs->value) && SON_ValueIsConstant(rhs->value)) {
 
-#define Operation(op_enum_val, op) \
+#define Operation(op_enum_val, op, Kind) \
   case op_enum_val: {              \
     return (SON_Value){            \
-      .kind = SON_Value_Integer,   \
+      .kind = (Kind),              \
       .isConstant = true,          \
       .as.integer = lhs->value.as.integer op rhs->value.as.integer, \
     };                             \
   }
 
         switch(node->as.binary.op) {
-          Operation(Operation_Add, +)
-          Operation(Operation_Sub, -)
-          Operation(Operation_Mul, *)
-          Operation(Operation_Div, /)
+          Operation(Operation_Add, +, lhs->value.kind)
+          Operation(Operation_Sub, -, lhs->value.kind)
+          Operation(Operation_Mul, *, lhs->value.kind)
+          Operation(Operation_Div, /, lhs->value.kind)
+
+          Operation(Operation_Less, <, SON_Value_Boolean)
+          Operation(Operation_LessEq, <=, SON_Value_Boolean)
+          Operation(Operation_Greater, >, SON_Value_Boolean)
+          Operation(Operation_GreaterEq, >=, SON_Value_Boolean)
         }
 
 #undef Operation
