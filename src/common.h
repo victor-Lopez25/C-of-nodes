@@ -111,15 +111,6 @@ typedef enum {
 typedef enum {
   SON_Value_Unassigned = 0,
 
-  SON_Value_Bottom = 1,
-  SON_Value_All = SON_Value_Bottom,
-
-  SON_Value_Top = 2,
-  SON_Value_Any = SON_Value_Top,
-
-  SON_Value_Simple = 3,
-
-
   SON_Value_StartCanBeConstant = 4,
 
   SON_Value_String = 5,
@@ -169,21 +160,21 @@ typedef enum {
   Operation_Not,
 
   // binary
-  /* binary add '+' expr */
-  Operation_Add, /* order does not matter */
-  /* binary mul '*' expr */
-  Operation_Mul, /* order does not matter */
-  /* binary sub '-' expr */
-  Operation_Sub, /* order matters */
-  /* binary div '/' expr */
-  Operation_Div, /* order matters */
-  /* binary less than '<' expr */
+  /* binary add '+' expr, order does not matter */
+  Operation_Add,
+  /* binary mul '*' expr, order does not matter */
+  Operation_Mul,
+  /* binary sub '-' expr, order matters */
+  Operation_Sub,
+  /* binary div '/' expr, order matters */
+  Operation_Div,
+  /* binary less than '<' expr, order matters */
   Operation_Less,
-  /* binary less than or equal '<=' expr */
+  /* binary less than or equal '<=' expr, order matters */
   Operation_LessEq,
-  /* binary greater than '>' expr */
+  /* binary greater than '>' expr, order matters */
   Operation_Greater,
-  /* binary greater than or equal '>=' expr */
+  /* binary greater than or equal '>=' expr, order matters */
   Operation_GreaterEq,
 } OperationKind;
 

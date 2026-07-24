@@ -150,7 +150,7 @@ static SON_Node *Parse_Definition(CompilerContext *ctx)
     return &ctx->sentinelNode;
   }
 
-  SON_ValueKind kind = SON_Value_Any;
+  SON_ValueKind kind = SON_Value_Unassigned;
 
   if(LEX_Match(ctx, VIEW_STATIC(":"))) {
     if(LEX_MatchEx(ctx, VIEW_STATIC("int"))) {
@@ -164,7 +164,7 @@ static SON_Node *Parse_Definition(CompilerContext *ctx)
   if(LEX_Match(ctx, VIEW_STATIC("="))) {
     // TODO: Type check here...
     expr = Parse_RequireNode(ctx, Parse_Expression(ctx), VIEW_STATIC(";"));
-  } else if(kind == SON_Value_Any) {
+  } else if(kind == SON_Value_Unassigned) {
     Parse_SyntaxError(ctx, VIEW_STATIC("a type or a value assignment"));
     return &ctx->sentinelNode;
   } else {

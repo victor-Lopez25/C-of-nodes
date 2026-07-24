@@ -239,7 +239,7 @@ SON_Node *SON_AllocGreaterEq(CompilerContext *ctx, SON_Node *lhs, SON_Node *rhs)
 SON_Node *SON_AllocScope(CompilerContext *ctx)
 {
   SON_Node *node = SON_AllocNext_Impl(ctx, SON_Node_Scope, 0, 0);
-  node->value.kind = SON_Value_Bottom;
+  node->value.kind = SON_Value_Unassigned;
   SON_GraphStep(ctx);
   return node;
 }
@@ -402,8 +402,8 @@ const char *OperationKindToString(OperationKind op)
 
 bool SON_ValueIsConstant(SON_Value val)
 {
-  return ((val.kind > SON_Value_StartCanBeConstant) && (val.kind < SON_Value_EndCanBeConstant) && val.isConstant) || 
-    (val.kind == SON_Value_Top);
+  return ((val.kind > SON_Value_StartCanBeConstant) && 
+          (val.kind < SON_Value_EndCanBeConstant) && val.isConstant);
 }
 
 // NOTE: In SeaOfNodes/Simple this is called 'isCFG()'
@@ -509,9 +509,6 @@ const char *SON_ValueKindToString(SON_ValueKind kind)
     case SON_Value_Unassigned: return "unassigned";
     case SON_Value_StartCanBeConstant: return "unassigned";
     case SON_Value_EndCanBeConstant: return "unassigned";
-    case SON_Value_Bottom: return "Bottom";
-    case SON_Value_Top: return "Top";
-    case SON_Value_Simple: return "simple";
 
     case SON_Value_String: return "string";
     case SON_Value_Integer: return "integer";
@@ -753,13 +750,13 @@ SON_Value SON_Compute(SON_Node *node)
 
     case SON_Node_FunctionStart: {
       return (SON_Value){
-        .kind = SON_Value_Bottom,
+        .kind = SON_Value_Unassigned,
       };
     }
 
     case SON_Node_FunctionReturn: {
       return (SON_Value){
-        .kind = SON_Value_Bottom,
+        .kind = SON_Value_Unassigned,
       };
     }
 
@@ -813,7 +810,7 @@ SON_Value SON_Compute(SON_Node *node)
         }
       }
       return (SON_Value){
-        .kind = SON_Value_Bottom,
+        .kind = SON_Value_Unassigned,
       };
     }
 
@@ -847,13 +844,13 @@ SON_Value SON_Compute(SON_Node *node)
       }
 
       return (SON_Value){
-        .kind = SON_Value_Bottom,
+        .kind = SON_Value_Unassigned,
       };
     }
 
     case SON_Node_Scope: {
       return (SON_Value){
-        .kind = SON_Value_Bottom,
+        .kind = SON_Value_Unassigned,
       };
     }
   }
